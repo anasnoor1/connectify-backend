@@ -3,15 +3,73 @@ const nodemailer = require('nodemailer');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 
-// Generate 6-digit OTP
+//  Generate 6-digit OTP
 function generateOtp() {
   return Math.floor(100000 + Math.random() * 900000).toString();
 }
 
-// Generate OTP expiry time
+//  Generate OTP expiry time (default 3 minutes)
 function otpExpiry(minutes = 3) {
   return Date.now() + minutes * 60 * 1000;
 }
+
+// Register: create user, hash password, set pending verification, send OTP
+exports.register = async (req, res) => {
+  try {
+    const { name, email, password, role } = req.body || {};
+    const emailNorm = String(email || '').trim().toLowerCase();
+    if (!name || !emailNorm || !password) return res.status(400).json({ message: 'Name, email and password are required' });
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(emailNorm)) return res.status(400).json({ message: 'Invalid email' });
+    if (password.length < 6) return res.status(400).json({ message: 'Password must be at least 6 characters' });
+    if (role && !['brand','influencer','admin'].includes(role)) return res.status(400).json({ message: 'Invalid role' });
+
+    const existing = await User.findOne({ email: emailNorm });
+    if (existing) return res.status(400).json({ message: 'Email already in use' });
+
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(password, salt);
+
+    const otp = generateOtp();
+    const expiresAt = new Date(otpExpiry(3));
+
+    const user = new User({
+      name,
+      email: emailNorm,
+      password: hashedPassword,
+      role: role || 'influencer',
+      is_verified: false,
+      status: 'pending_verification',
+      otp: { code: otp, expiresAt }
+    });
+    await user.save();
+
+    const transporter = nodemailer.createTransport({
+      host: process.env.EMAIL_HOST,
+      port: parseInt(process.env.EMAIL_PORT || '587', 10),
+      secure: String(process.env.EMAIL_SECURE || 'false').toLowerCase() === 'true',
+      auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
+    });
+
+    await transporter.sendMail({
+      from: `"Connectify Team" <${process.env.EMAIL_USER}>`,
+      to: user.email,
+      subject: 'Your Connectify OTP Code',
+      html: `
+        <div style="font-family: Arial, sans-serif; text-align: center; padding: 20px;">
+          <h2> OTP Verification</h2>
+          <p>Your OTP for verification is:</p>
+          <h1 style="background:#f4f4f4;display:inline-block;padding:10px 20px;border-radius:8px;">${otp}</h1>
+          <p>This OTP will expire in 3 minutes.</p>
+        </div>
+      `,
+    });
+
+    return res.status(201).json({ message: 'User created. OTP sent to email.' });
+  } catch (err) {
+    console.error('Register error:', err?.message || err);
+    return res.status(500).json({ message: 'Server error' });
+  }
+};
 
 // Send OTP to existing (unverified) user
 exports.sendOtp = async (req, res) => {
@@ -28,11 +86,13 @@ exports.sendOtp = async (req, res) => {
     await user.save();
 
     const transporter = nodemailer.createTransport({
-      service: 'gmail',
+      host: process.env.EMAIL_HOST,
+      port: parseInt(process.env.EMAIL_PORT || '587', 10),
+      secure: String(process.env.EMAIL_SECURE || 'false').toLowerCase() === 'true',
       auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
     });
 
-    await transporter.sendMail({
+    const info = await transporter.sendMail({
       from: `"Connectify Team" <${process.env.EMAIL_USER}>`,
       to: user.email,
       subject: 'Your Connectify OTP Code',
@@ -46,10 +106,10 @@ exports.sendOtp = async (req, res) => {
       `,
     });
 
-    console.log('✅ Email sent successfully');
+    console.log(' Email sent successfully:', info.response);
     res.status(200).json({ message: 'OTP sent successfully' });
   } catch (err) {
-    console.error('❌ Email send error:', err?.response || err?.message || err);
+    console.error(' Email send error:', err?.response || err?.message || err);
     res.status(500).json({ message: 'Failed to send OTP' });
   }
 };
@@ -77,6 +137,50 @@ exports.verifyOtp = async (req, res) => {
     return res.json({ message: 'Email verified successfully' });
   } catch (err) {
     console.error('Verify OTP error:', err?.message || err);
+    return res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// Resend OTP
+exports.resendOtp = async (req, res) => {
+  try {
+    const { email } = req.body;
+    const emailNorm = String(email || '').trim().toLowerCase();
+    if (!emailNorm) return res.status(400).json({ message: 'Email is required' });
+
+    const user = await User.findOne({ email: emailNorm });
+    if (!user) return res.status(400).json({ message: 'User not found' });
+    if (user.is_verified) return res.status(400).json({ message: 'Already verified' });
+
+    const otp = generateOtp();
+    const expiresAt = new Date(otpExpiry(3));
+    user.otp = { code: otp, expiresAt };
+    await user.save();
+
+    const transporter = nodemailer.createTransport({
+      host: process.env.EMAIL_HOST,
+      port: parseInt(process.env.EMAIL_PORT || '587', 10),
+      secure: String(process.env.EMAIL_SECURE || 'false').toLowerCase() === 'true',
+      auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
+    });
+
+    await transporter.sendMail({
+      from: `"Connectify Team" <${process.env.EMAIL_USER}>`,
+      to: user.email,
+      subject: 'Your Connectify OTP Code',
+      html: `
+        <div style="font-family: Arial, sans-serif; text-align: center; padding: 20px;">
+          <h2>🔐 OTP Verification</h2>
+          <p>Your OTP for verification is:</p>
+          <h1 style="background:#f4f4f4;display:inline-block;padding:10px 20px;border-radius:8px;">${otp}</h1>
+          <p>This OTP will expire in 3 minutes.</p>
+        </div>
+      `,
+    });
+
+    return res.json({ message: 'OTP resent to email' });
+  } catch (err) {
+    console.error('Resend OTP error:', err?.message || err);
     return res.status(500).json({ message: 'Server error' });
   }
 };
