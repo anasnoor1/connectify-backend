@@ -1,12 +1,17 @@
+// models/User.js
 const mongoose = require("mongoose");
 
 const userSchema = new mongoose.Schema({
   name: { type: String, required: true },
-  email: { type: String, required: true, unique: true },
+  email: { type: String, required: true, unique: true, trim: true, lowercase: true },
   password: { type: String, required: true },
-  confirmPassword: { type: String, required: true },
-  role: { type: String, enum: ["brand", "influencer"], required: true },
-  status: { type: String, enum: ["active", "blocked"], default: "active" },
+  role: { type: String, enum: ["brand", "influencer", "admin"], default: "influencer" },
+  is_verified: { type: Boolean, default: false },
+  status: { type: String, enum: ["pending_verification", "active", "blocked"], default: "pending_verification" },
+  otp: {
+    code: { type: String, default: null },
+    expiresAt: { type: Date, default: null }
+  },
   created_at: { type: Date, default: Date.now },
 });
 

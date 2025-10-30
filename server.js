@@ -1,18 +1,7 @@
-<<<<<<< HEAD
-require('dotenv').config();
-const express = require('express');
-const helmet = require('helmet');
-const cors = require('cors');
-const rateLimit = require('express-rate-limit');
-const connectDB = require('./config/database');
-const path = require('path');
-
-=======
 const express = require("express");
 const http = require('http')
 const cors = require('cors')
 require('dotenv').config()
->>>>>>> auth-anas
 const app = express();
 
 
