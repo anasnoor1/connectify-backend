@@ -2,6 +2,7 @@ const User = require('../models/User');
 const nodemailer = require('nodemailer');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const fetch = global.fetch || require('node-fetch');
 
 //  Generate 6-digit OTP
 function generateOtp() {
@@ -81,7 +82,7 @@ exports.sendOtp = async (req, res) => {
     if (user.is_verified) return res.status(400).json({ message: 'Already verified' });
 
     const otp = generateOtp();
-    const expiresAt = new Date(otpExpiry(3));
+    const expiresAt = new Date(otpExpiry(2));
     user.otp = { code: otp, expiresAt };
     await user.save();
 
@@ -98,7 +99,86 @@ exports.sendOtp = async (req, res) => {
       subject: 'Your Connectify OTP Code',
       html: `
         <div style="font-family: Arial, sans-serif; text-align: center; padding: 20px;">
-          <h2>🔐 OTP Verification</h2>
+          <h2> OTP Verification</h2>
+          <p>Your OTP for verification is:</p>
+          <h1 style="background:#f4f4f4;display:inline-block;padding:10px 20px;border-radius:8px;">${otp}</h1>
+          <p>This OTP will expire in 2 minutes.</p>
+        </div>
+      `,
+    });
+
+    console.log(' Email sent successfully');
+    res.status(200).json({ message: 'OTP sent successfully' });
+  } catch (err) {
+    console.error(' Email send error:', err?.response || err?.message || err);
+    res.status(500).json({ message: 'Failed to send OTP' });
+  }
+};
+// Register: create user, set OTP, send email
+exports.register = async (req, res) => {
+  try {
+    const { name, email, password, role } = req.body || {};
+    const emailNorm = String(email || '').trim().toLowerCase();
+    if (!name || !emailNorm || !password) {
+      return res.status(400).json({ message: 'Name, email and password are required' });
+    }
+
+    let existing = await User.findOne({ email: emailNorm });
+    if (existing) {
+      if (existing.is_verified) {
+        return res.status(400).json({ message: 'Email already registered' });
+      }
+      // If exists but not verified, refresh OTP and resend
+      const otp = generateOtp();
+      existing.otp = { code: otp, expiresAt: new Date(otpExpiry(2)) };
+      await existing.save();
+
+      const transporter = nodemailer.createTransport({
+        service: 'gmail',
+        auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
+      });
+      await transporter.sendMail({
+        from: `"Connectify Team" <${process.env.EMAIL_USER}>`,
+        to: existing.email,
+        subject: 'Your Connectify OTP Code',
+        html: `
+          <div style="font-family: Arial, sans-serif; text-align: center; padding: 20px;">
+            <h2> OTP Verification</h2>
+            <p>Your OTP for verification is:</p>
+            <h1 style="background:#f4f4f4;display:inline-block;padding:10px 20px;border-radius:8px;">${otp}</h1>
+            <p>This OTP will expire in 2 minutes.</p>
+          </div>
+        `,
+      });
+      return res.status(200).json({ message: 'Account pending verification. OTP sent again.' });
+    }
+
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(password, salt);
+
+    const otp = generateOtp();
+    const user = new User({
+      name,
+      email: emailNorm,
+      password: hashedPassword,
+      role: role === 'brand' ? 'brand' : 'influencer',
+      is_verified: false,
+      status: 'pending_verification',
+      otp: { code: otp, expiresAt: new Date(otpExpiry(2)) },
+    });
+    await user.save();
+
+    const transporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
+    });
+    await transporter.sendMail({
+      from: `"Connectify Team" <${process.env.EMAIL_USER}>`,
+      to: user.email,
+      subject: 'Your Connectify OTP Code',
+      html: `
+        <div style="font-family: Arial, sans-serif; text-align: center; padding: 20px;">
+          <h2> OTP Verification</h2>
           <p>Your OTP for verification is:</p>
           <h1 style="background:#f4f4f4;display:inline-block;padding:10px 20px;border-radius:8px;">${otp}</h1>
           <p>This OTP will expire in 3 minutes.</p>
@@ -106,10 +186,10 @@ exports.sendOtp = async (req, res) => {
       `,
     });
 
-    console.log(' Email sent successfully:', info.response);
+    console.log('✅ Email sent successfully');
     res.status(200).json({ message: 'OTP sent successfully' });
   } catch (err) {
-    console.error(' Email send error:', err?.response || err?.message || err);
+    console.error('❌ Email send error:', err?.response || err?.message || err);
     res.status(500).json({ message: 'Failed to send OTP' });
   }
 };
@@ -193,10 +273,10 @@ exports.login = async (req, res) => {
     if (!emailNorm || !password) return res.status(400).json({ message: 'Email and password are required' });
 
     const user = await User.findOne({ email: emailNorm });
-    if (!user) return res.status(400).json({ message: 'Invalid credentials' });
+    if (!user) return res.status(400).json({ message: 'Invalid email' });
 
     const match = await bcrypt.compare(password, user.password);
-    if (!match) return res.status(400).json({ message: 'Invalid credentials' });
+    if (!match) return res.status(400).json({ message: 'Wrong password' });
 
     if (!user.is_verified) return res.status(403).json({ message: 'Please verify your email first' });
     if (user.status === 'blocked') return res.status(403).json({ message: 'Account blocked' });
