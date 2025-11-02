@@ -13,7 +13,7 @@ exports.protect = async (req, res, next) => {
     if (!user) return res.status(401).json({ message: 'User not found.' });
     req.user = user;
     next();
-  } catch (err) {
-    return res.status(401).json({ message: 'Token invalid.' });
+  } catch (err) {;
+    return res.status(401).json({ message: 'Token invalid.' })
   }
 };

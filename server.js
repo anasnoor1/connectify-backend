@@ -12,7 +12,12 @@ const authRoutes = require('./routes/auth')
 
 connectDB();
 
-app.use(cors({ origin: 'http://localhost:5173', methods: ['GET','POST','PUT','PATCH','DELETE','OPTIONS'], allowedHeaders: ['Content-Type','Authorization'] }))
+const envOrigins = (process.env.FRONTEND_URLS || '')
+  .split(',')
+  .map(s => s.trim())
+  .filter(Boolean);
+const allowedOrigins = envOrigins.length ? envOrigins : ['http://localhost:5173','http://localhost:5174'];
+app.use(cors({ origin: allowedOrigins, methods: ['GET','POST','PUT','PATCH','DELETE','OPTIONS'], allowedHeaders: ['Content-Type','Authorization'] }))
 app.use(express.json())
 app.use('/api/auth', authRoutes)
 
