@@ -9,11 +9,11 @@ exports.protect = async (req, res, next) => {
   const token = header.split(' ')[1];
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    const user = await User.findById(decoded.id).select('-password');
+    const user = await User.findById(decoded.sub).select('-password');
     if (!user) return res.status(401).json({ message: 'User not found.' });
     req.user = user;
     next();
-  } catch (err) {;
+  } catch (err) {
     return res.status(401).json({ message: 'Token invalid.' })
   }
 };

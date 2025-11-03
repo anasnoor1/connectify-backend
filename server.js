@@ -4,7 +4,6 @@ const cors = require('cors')
 require('dotenv').config()
 const app = express();
 
-
 const PORT = process.env.PORT || 5001;
 
 const connectDB = require('./database.js')
@@ -12,12 +11,23 @@ const authRoutes = require('./routes/auth')
 
 connectDB();
 
-const envOrigins = (process.env.FRONTEND_URLS || '')
-  .split(',')
-  .map(s => s.trim())
-  .filter(Boolean);
-const allowedOrigins = envOrigins.length ? envOrigins : ['http://localhost:5173','http://localhost:5174'];
-app.use(cors({ origin: allowedOrigins, methods: ['GET','POST','PUT','PATCH','DELETE','OPTIONS'], allowedHeaders: ['Content-Type','Authorization'] }))
+// CORS: allow a single, explicit frontend origin (secure and simple)
+// Configure via FRONTEND_ORIGIN; defaults to Vite dev URL
+const FRONTEND_ORIGIN = (process.env.FRONTEND_ORIGIN || 'http://localhost:5174').trim();
+console.log('CORS: allowing origin', FRONTEND_ORIGIN);
+
+app.use(cors({
+  origin: (origin, cb) => {
+    // Allow non-browser requests (no Origin header) and same-origin tools
+    if (!origin) return cb(null, true);
+    return origin === FRONTEND_ORIGIN
+      ? cb(null, true)
+      : cb(new Error('Not allowed by CORS'));
+  },
+  methods: ['GET','POST','PUT','PATCH','DELETE','OPTIONS'],
+  allowedHeaders: ['Content-Type','Authorization'],
+  // credentials: true, // enable only if you move to cookie-based auth
+}))
 app.use(express.json())
 app.use('/api/auth', authRoutes)
 

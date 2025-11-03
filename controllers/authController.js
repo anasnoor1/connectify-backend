@@ -4,6 +4,11 @@ const User = require('../model/User');
 const nodemailer = require('nodemailer');
 const crypto = require('crypto');
 
+// Debug logging helper (enable by setting AUTH_DEBUG=true)
+const AUTH_DEBUG = String(process.env.AUTH_DEBUG || '').toLowerCase() === 'true';
+const dbg = (...args) => { if (AUTH_DEBUG) console.log(...args); };
+const dbe = (...args) => { if (AUTH_DEBUG) console.error(...args); };
+
 function signToken(user) {
   return jwt.sign(
     { sub: user._id.toString(), email: user.email, role: user.role },
@@ -20,7 +25,7 @@ function getFromAddress() {
 function renderVerificationEmail(name, code, minutes) {
   const safeName = name || 'there';
   const subject = 'Connectify Verification Code';
-  const text = `Hi ${safeName},\n\nYour Connectify verification code is ${code}. It expires in ${minutes} minutes.\n\nIf you didn’t request this, you can safely ignore this email.\n\n— Connectify Team`;
+  const text = `Hi ${safeName},\n\nYour Connectify verification code is ${code}. It expires in ${minutes} minutes.\n\nIf you didn't request this, you can safely ignore this email.\n\n— Connectify Team`;
   const html = `
   <div style="font-family:Segoe UI,Arial,sans-serif;background:#f6f7fb;padding:32px">
     <table role="presentation" cellspacing="0" cellpadding="0" style="max-width:560px;margin:auto;background:#ffffff;border-radius:12px;box-shadow:0 4px 16px rgba(0,0,0,0.06)">
@@ -36,7 +41,7 @@ function renderVerificationEmail(name, code, minutes) {
           <p style="font-size:14px;color:#374151;margin:0 0 16px">Use the following code to verify your email address for Connectify:</p>
           <div style="display:inline-block;background:#f3f4f6;border:1px solid #e5e7eb;border-radius:10px;padding:14px 18px;letter-spacing:4px;font-size:22px;font-weight:700;color:#111827">${code}</div>
           <p style="font-size:13px;color:#6b7280;margin:16px 0 0">This code will expire in ${minutes} minutes.</p>
-          <p style="font-size:12px;color:#9ca3af;margin:16px 0 0">If you didn’t request this, please ignore this email.</p>
+          <p style="font-size:12px;color:#9ca3af;margin:16px 0 0">If you didn't request this, please ignore this email.</p>
         </td>
       </tr>
       <tr>
@@ -46,11 +51,11 @@ function renderVerificationEmail(name, code, minutes) {
   </div>`;
   return { subject, text, html };
 }
-
+                                                                    
 function renderResetEmail(name, code, minutes) {
   const safeName = name || 'there';
   const subject = 'Connectify Password Reset Code';
-  const text = `Hi ${safeName},\n\nUse this code to reset your Connectify password: ${code}. It expires in ${minutes} minutes.\n\nIf you didn’t request this, you can safely ignore this email.\n\n— Connectify Team`;
+  const text = `Hi ${safeName},\n\nUse this code to reset your Connectify password: ${code}. It expires in ${minutes} minutes.\n\nIf you didn't request this, you can safely ignore this email.\n\n— Connectify Team`;
   const html = `
   <div style="font-family:Segoe UI,Arial,sans-serif;background:#f6f7fb;padding:32px">
     <table role="presentation" cellspacing="0" cellpadding="0" style="max-width:560px;margin:auto;background:#ffffff;border-radius:12px;box-shadow:0 4px 16px rgba(0,0,0,0.06)">
@@ -66,37 +71,7 @@ function renderResetEmail(name, code, minutes) {
           <p style="font-size:14px;color:#374151;margin:0 0 16px">Use the following code to reset your password:</p>
           <div style="display:inline-block;background:#f3f4f6;border:1px solid #e5e7eb;border-radius:10px;padding:14px 18px;letter-spacing:4px;font-size:22px;font-weight:700;color:#111827">${code}</div>
           <p style="font-size:13px;color:#6b7280;margin:16px 0 0">This code will expire in ${minutes} minutes.</p>
-          <p style="font-size:12px;color:#9ca3af;margin:16px 0 0">If you didn’t request this, please ignore this email.</p>
-        </td>
-      </tr>
-      <tr>
-        <td style="padding:18px 28px;border-top:1px solid #eef0f4;color:#6b7280;font-size:12px">— Connectify Team</td>
-      </tr>
-    </table>
-  </div>`;
-  return { subject, text, html };
-}
-
-function renderResetEmail(name, code, minutes) {
-  const safeName = name || 'there';
-  const subject = 'Connectify Password Reset Code';
-  const text = `Hi ${safeName},\n\nUse this code to reset your Connectify password: ${code}. It expires in ${minutes} minutes.\n\nIf you didn’t request this, you can safely ignore this email.\n\n— Connectify Team`;
-  const html = `
-  <div style="font-family:Segoe UI,Arial,sans-serif;background:#f6f7fb;padding:32px">
-    <table role="presentation" cellspacing="0" cellpadding="0" style="max-width:560px;margin:auto;background:#ffffff;border-radius:12px;box-shadow:0 4px 16px rgba(0,0,0,0.06)">
-      <tr>
-        <td style="padding:24px 28px;border-bottom:1px solid #eef0f4">
-          <div style="font-size:18px;font-weight:600;color:#111827">Connectify</div>
-          <div style="font-size:12px;color:#6b7280">Password Reset</div>
-        </td>
-      </tr>
-      <tr>
-        <td style="padding:28px">
-          <p style="font-size:16px;color:#111827;margin:0 0 12px">Hi ${safeName},</p>
-          <p style="font-size:14px;color:#374151;margin:0 0 16px">Use the following code to reset your password:</p>
-          <div style="display:inline-block;background:#f3f4f6;border:1px solid #e5e7eb;border-radius:10px;padding:14px 18px;letter-spacing:4px;font-size:22px;font-weight:700;color:#111827">${code}</div>
-          <p style="font-size:13px;color:#6b7280;margin:16px 0 0">This code will expire in ${minutes} minutes.</p>
-          <p style="font-size:12px;color:#9ca3af;margin:16px 0 0">If you didn’t request this, please ignore this email.</p>
+          <p style="font-size:12px;color:#9ca3af;margin:16px 0 0">If you didn't request this, please ignore this email.</p>
         </td>
       </tr>
       <tr>
@@ -137,25 +112,88 @@ async function getTransporter() {
 
 async function googleAuth(req, res) {
   try {
+    dbg('🔐 Google Auth Request Received:', { 
+      hasIdToken: !!req.body.idToken,
+      role: req.body.role 
+    });
+    
     const { idToken, role } = req.body || {};
-    if (!idToken) return res.status(400).json({ message: 'idToken is required' });
+    if (!idToken) {
+      dbg('❌ No idToken provided');
+      return res.status(400).json({ message: 'idToken is required' });
+    }
 
+    dbg('🔄 Verifying Google token...');
     const tokenInfoRes = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`);
-    if (!tokenInfoRes.ok) return res.status(401).json({ message: 'Invalid Google token' });
+    
+    if (!tokenInfoRes.ok) {
+      dbg('❌ Google token verification failed:', tokenInfoRes.status, tokenInfoRes.statusText);
+      return res.status(401).json({ message: 'Invalid Google token' });
+    }
+    
     const info = await tokenInfoRes.json();
+    dbg('✅ Google token info received:', { 
+      email: info.email,
+      name: info.name,
+      aud: info.aud 
+    });
 
     const aud = info.aud;
     const email = (info.email || '').toLowerCase();
     const name = info.name || email.split('@')[0] || 'User';
-    if (!email) return res.status(400).json({ message: 'Email not present in Google token' });
+    
+    if (!email) {
+      dbg('❌ No email in Google token');
+      return res.status(400).json({ message: 'Email not present in Google token' });
+    }
 
     const expectedAud = process.env.GOOGLE_CLIENT_ID || '720475734209-do0bg2s9kce36tp0hvc6dlfvh9qhtvnf.apps.googleusercontent.com';
-    if (expectedAud && aud !== expectedAud) return res.status(401).json({ message: 'Google token audience mismatch' });
+    dbg('🔍 Audience Check:', { expectedAud, actualAud: aud });
+    
+    if (expectedAud && aud !== expectedAud) {
+      dbg('❌ Audience mismatch');
+      return res.status(401).json({ message: 'Google token audience mismatch' });
+    }
 
     const userRole = role === 'brand' ? 'brand' : 'influencer';
+    dbg('👤 User role:', userRole);
+    dbg('📧 Looking for user with email:', email);
 
     let user = await User.findOne({ email });
-    if (!user) {
+    
+    if (user) {
+      dbg('✅ Existing user found:', user._id);
+      
+      if (user.status === 'blocked') {
+        dbg('❌ User account is blocked');
+        return res.status(403).json({ message: 'Account is blocked' });
+      }
+      
+      // Update user info if needed
+      if (user.name !== name || user.role !== userRole) {
+        dbg('🔄 Updating user info');
+        user.name = name;
+        user.role = userRole;
+        await user.save();
+      }
+
+      const token = signToken(user);
+      dbg('🎉 Login successful for existing user');
+      return res.json({
+        token,
+        user: {
+          _id: user._id,
+          name: user.name,
+          email: user.email,
+          role: user.role,
+          is_verified: user.is_verified,
+          status: user.status,
+          created_at: user.created_at,
+        },
+      });
+    } else {
+      // New user - register
+      dbg('🆕 Creating new user');
       const randomPass = await bcrypt.hash(`${email}:${Date.now()}:${Math.random()}`, 10);
       user = await User.create({
         name,
@@ -165,29 +203,30 @@ async function googleAuth(req, res) {
         is_verified: true,
         status: 'active',
       });
-    } else {
-      if (user.status === 'blocked') {
-        return res.status(403).json({ message: 'Account is blocked' });
-      }
-      // Existing account – instruct user to login instead of creating again
-      return res.status(409).json({ message: 'Account already exists. Please login.' });
-    }
 
-    const token = signToken(user);
-    return res.json({
-      token,
-      user: {
-        _id: user._id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        is_verified: user.is_verified,
-        status: user.status,
-        created_at: user.created_at,
-      },
-    });
+      dbg('✅ New user created:', user._id);
+      const token = signToken(user);
+      dbg('🎉 Registration successful for new user');
+      return res.json({
+        token,
+        user: {
+          _id: user._id,
+          name: user.name,
+          email: user.email,
+          role: user.role,
+          is_verified: user.is_verified,
+          status: user.status,
+          created_at: user.created_at,
+        },
+      });
+    }
   } catch (e) {
-    return res.status(500).json({ message: 'Google auth failed', error: e?.message || 'unknown' });
+    dbe('💥 Google auth error details:', e);
+    return res.status(500).json({ 
+      message: 'Google auth failed', 
+      error: e?.message || 'unknown',
+      stack: e?.stack 
+    });
   }
 }
 
@@ -238,6 +277,7 @@ async function verifyOtp(req, res) {
     return res.status(500).json({ message: 'Failed to verify OTP', error: e?.message || 'unknown' });
   }
 }
+
 async function register(req, res) {
   try {
     const { name, email, password, role } = req.body || {};
@@ -285,15 +325,16 @@ async function login(req, res) {
     const { email, password } = req.body || {};
     if (!email || !password) return res.status(400).json({ message: 'Email and password are required' });
     const user = await User.findOne({ email: String(email).toLowerCase().trim() });
-    if (!user) return res.status(401).json({ message: 'Invalid credentials' });
+    if (!user) return res.status(401).json({ message: 'Email not found' });
     const ok = await bcrypt.compare(password, user.password);
-    if (!ok) return res.status(401).json({ message: 'Invalid credentials' });
+    if (!ok) return res.status(401).json({ message: 'Incorrect password' });
     const token = signToken(user);
     return res.json({ token, user: { _id: user._id, name: user.name, email: user.email, role: user.role, is_verified: user.is_verified, status: user.status, created_at: user.created_at } });
   } catch (e) {
     return res.status(500).json({ message: 'Login failed', error: e?.message || 'unknown' });
   }
 }
+
 async function passwordForgot(req, res) {
   try {
     const { email } = req.body || {};
@@ -366,4 +407,3 @@ module.exports = {
   verifyResetOtp,
   updatePassword,
 };
-
