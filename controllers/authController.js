@@ -162,35 +162,8 @@ async function googleAuth(req, res) {
     let user = await User.findOne({ email });
     
     if (user) {
-      dbg('✅ Existing user found:', user._id);
-      
-      if (user.status === 'blocked') {
-        dbg('❌ User account is blocked');
-        return res.status(403).json({ message: 'Account is blocked' });
-      }
-      
-      // Update user info if needed
-      if (user.name !== name || user.role !== userRole) {
-        dbg('🔄 Updating user info');
-        user.name = name;
-        user.role = userRole;
-        await user.save();
-      }
-
-      const token = signToken(user);
-      dbg('🎉 Login successful for existing user');
-      return res.json({
-        token,
-        user: {
-          _id: user._id,
-          name: user.name,
-          email: user.email,
-          role: user.role,
-          is_verified: user.is_verified,
-          status: user.status,
-          created_at: user.created_at,
-        },
-      });
+      dbg('❌ Email already exists for Google signup');
+      return res.status(409).json({ message: 'Email already exists' });
     } else {
       // New user - register
       dbg('🆕 Creating new user');
