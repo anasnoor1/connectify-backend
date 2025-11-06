@@ -13,14 +13,17 @@ connectDB();
 
 // CORS: allow a single, explicit frontend origin (secure and simple)
 // Configure via FRONTEND_ORIGIN; defaults to Vite dev URL
-const FRONTEND_ORIGIN = (process.env.FRONTEND_ORIGIN || 'http://localhost:5174').trim();
-console.log('CORS: allowing origin', FRONTEND_ORIGIN);
+const FRONTEND_ORIGINS = String(process.env.FRONTEND_ORIGIN || 'http://localhost:5174')
+  .split(',')
+  .map(s => s.trim())
+  .filter(Boolean);
+console.log('CORS: allowing origins', FRONTEND_ORIGINS);
 
 app.use(cors({
   origin: (origin, cb) => {
     // Allow non-browser requests (no Origin header) and same-origin tools
     if (!origin) return cb(null, true);
-    return origin === FRONTEND_ORIGIN
+    return FRONTEND_ORIGINS.includes(origin)
       ? cb(null, true)
       : cb(new Error('Not allowed by CORS'));
   },

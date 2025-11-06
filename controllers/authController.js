@@ -323,14 +323,66 @@ async function register(req, res) {
 async function login(req, res) {
   try {
     const { email, password } = req.body || {};
-    if (!email || !password) return res.status(400).json({ message: 'Email and password are required' });
-    const user = await User.findOne({ email: String(email).toLowerCase().trim() });
-    if (!user) return res.status(401).json({ message: 'Email not found' });
-    const ok = await bcrypt.compare(password, user.password);
-    if (!ok) return res.status(401).json({ message: 'Incorrect password' });
+
+    // Basic validation
+    if (
+      !email || !password ||
+      typeof email !== 'string' || typeof password !== 'string' ||
+      !email.trim() || !String(password).length
+    ) {
+      return res.status(400).json({ message: 'Email and password are required' });
+    }
+
+    const normalizedEmail = String(email).toLowerCase().trim();
+    dbg('🔐 Login attempt for:', normalizedEmail);
+
+    const user = await User.findOne({ email: normalizedEmail });
+    if (!user) {
+      // Do not reveal which field failed
+      return res.status(401).json({ message: 'Invalid email or password' });
+    }
+
+    // Block login for users who are not allowed yet
+    if (user.status === 'blocked') {
+      return res.status(403).json({ message: 'Account is blocked' });
+    }
+    if (!user.is_verified || user.status === 'pending_verification') {
+      return res.status(403).json({ message: 'Please verify your email first.' });
+    }
+
+    if (!user.password) {
+      // Defensive: handle accounts without a password set (e.g., social-only)
+      return res.status(401).json({ message: 'Invalid email or password' });
+    }
+
+    let ok = false;
+    try {
+      ok = await bcrypt.compare(String(password), user.password);
+    } catch (cmpErr) {
+      dbe('bcrypt.compare failed:', cmpErr);
+      // Treat hash issues as invalid credentials rather than 500
+      return res.status(401).json({ message: 'Invalid email or password' });
+    }
+
+    if (!ok) {
+      return res.status(401).json({ message: 'Invalid email or password' });
+    }
+
     const token = signToken(user);
-    return res.json({ token, user: { _id: user._id, name: user.name, email: user.email, role: user.role, is_verified: user.is_verified, status: user.status, created_at: user.created_at } });
+    return res.json({
+      token,
+      user: {
+        _id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        is_verified: user.is_verified,
+        status: user.status,
+        created_at: user.created_at,
+      },
+    });
   } catch (e) {
+    dbe('Login error:', e);
     return res.status(500).json({ message: 'Login failed', error: e?.message || 'unknown' });
   }
 }
