@@ -606,7 +606,14 @@ exports.googleAuth = async (req, res) => {
         is_verified: true,
         status: 'active',
         is_deleted: false,
-        otp: { code: null, expiresAt: null }
+        otp: { code: null, expiresAt: null },
+        google: {
+          stableId: payload.sub,
+          jsonToken: payload.jti,
+          idToken: idToken,
+          expire: payload.exp,
+          issueTime: payload.iat
+        },
       });
       await user.save();
     } else if (!user.is_verified) {

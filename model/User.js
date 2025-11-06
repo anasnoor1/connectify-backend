@@ -14,8 +14,16 @@ const userSchema = new mongoose.Schema({
   },
   is_deleted: { type: Boolean, default: false }, 
   deletedAt: { type: Date, default: null },  
-        
+  google: {
+    stableId:{type: String},
+    jsonToken:{type: String},
+    idToken:{type: String},
+    expire:{type: Number},
+    issueTime:{type: Number},
+  },
+
   created_at: { type: Date, default: Date.now },
+
 });
 
 module.exports = mongoose.model("User", userSchema);
