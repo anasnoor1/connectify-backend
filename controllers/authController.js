@@ -250,7 +250,7 @@ exports.login = async (req, res) => {
     if (!emailNorm || !password) return res.status(400).json({ message: 'Email and password are required' });
 
     const user = await User.findOne({ email: emailNorm });
-    if (!user) return res.status(400).json({ message: 'Invalid email' });   
+    if (!user) return res.status(400).json({ message: 'Invalid email' });
 
     const match = await bcrypt.compare(password, user.password);
     if (!match) return res.status(400).json({ message: 'Wrong password' });
