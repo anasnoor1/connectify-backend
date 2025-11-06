@@ -12,6 +12,9 @@ const userSchema = new mongoose.Schema({
     code: { type: String, default: null },
     expiresAt: { type: Date, default: null }
   },
+  is_deleted: { type: Boolean, default: false }, 
+  deletedAt: { type: Date, default: null },  
+        
   created_at: { type: Date, default: Date.now },
 });
 
