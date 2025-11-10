@@ -2,10 +2,42 @@ const mongoose = require("mongoose");
 
 const brandProfileSchema = new mongoose.Schema({
   brand_id: { type: mongoose.Schema.Types.ObjectId, ref: "User", unique: true },
-  company_name: { type: String, required: true },
-  industry: { type: String },
-  website: { type: String },
-  bio: { type: String },
+  company_name: { type: String, required: true, trim: true, minlength: 2 },
+  industry: { type: String, trim: true },
+  website: {
+    type: String,
+    trim: true,
+    validate: {
+      validator: function (v) {
+        if (!v) return true;
+        return /^https?:\/\/[^\s/$.?#].[^\s]*$/i.test(v);
+      },
+      message: 'Invalid URL',
+    },
+  },
+  avatar_url: {
+    type: String,
+    trim: true,
+    validate: {
+      validator: function (v) {
+        if (!v) return true;
+        return /^https?:\/\/[^\s/$.?#].[^\s]*$/i.test(v);
+      },
+      message: 'Invalid avatar URL',
+    },
+  },
+  phone: {
+    type: String,
+    trim: true,
+    validate: {
+      validator: function (v) {
+        if (!v) return true;
+        return /^\+?[0-9]{10,15}$/.test(v.replace(/\s|-/g, ''));
+      },
+      message: 'Invalid phone number',
+    },
+  },
+  bio: { type: String, trim: true },
   is_verified: { type: Boolean, default: false },
   created_at: { type: Date, default: Date.now },
 });

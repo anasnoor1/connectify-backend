@@ -1,19 +1,24 @@
 const express = require("express");
-const http = require('http')
 const cors = require('cors')
 require('dotenv').config()
 const app = express();
 
-const PORT = process.env.PORT || 5001;
+const PORT = process.env.PORT || 5000;
 
 const connectDB = require('./database.js')
 const authRoutes = require('./routes/auth')
+const profileRoutes = require('./routes/profile')
+const userRoutes = require('./routes/user')
+const contactRoutes = require('./routes/contact')
 
 connectDB();
 
-// CORS: allow a single, explicit frontend origin (secure and simple)
-// Configure via FRONTEND_ORIGIN; defaults to Vite dev URL
-const FRONTEND_ORIGINS = String(process.env.FRONTEND_ORIGIN || 'http://localhost:5174')
+// CORS: allow explicit frontend origins
+// Configure via FRONTEND_ORIGIN (comma-separated); sensible defaults for local dev (5173/5174)
+const FRONTEND_ORIGINS = String(
+  process.env.FRONTEND_ORIGIN ||
+  'http://localhost:5173,http://localhost:5174,http://127.0.0.1:5173,http://127.0.0.1:5174'
+)
   .split(',')
   .map(s => s.trim())
   .filter(Boolean);
@@ -33,27 +38,10 @@ app.use(cors({
 }))
 app.use(express.json())
 app.use('/api/auth', authRoutes)
+app.use('/api/profile', profileRoutes)
+app.use('/api/user', userRoutes)
+app.use('/api/contact', contactRoutes)
 
-function startServer(port, triedFallback = false) {
-  const server = http.createServer(app);
-  server.listen(port, () => {
-    console.log(`Server is listening at the port ${port}`)
-  });
-  server.on('error', (err) => {
-    if (err && err.code === 'EADDRINUSE') {
-      const fallback = 5001;
-      if (!triedFallback && port !== fallback) {
-        console.warn(`Port ${port} in use. Trying ${fallback}...`);
-        startServer(fallback, true);
-      } else {
-        console.error(`All attempted ports are in use. Last tried: ${port}`);
-        process.exit(1);
-      }
-    } else {
-      console.error('Server error:', err);
-      process.exit(1);
-    }
-  });
-}
-
-startServer(Number(PORT));
+app.listen(Number(PORT), () => {
+  console.log(`Server is listening at the port ${PORT}`)
+});
