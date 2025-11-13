@@ -716,3 +716,23 @@ exports.updatePassword = async (req, res) => {
     return res.status(500).json({ message: 'Server error' });
   }
 };
+
+exports.getCounts = async (req, res) => {
+  try {
+    const totalBrands = await User.countDocuments({
+      role: "brand",
+      is_deleted: false,
+    });
+    const totalInfluencers = await User.countDocuments({
+      role: "influencer",
+      is_deleted: false,
+    });
+    return res.status(200).json({
+      totalBrands,
+      totalInfluencers,
+    });
+  } catch (err) {
+    console.error("Count fetch error:", err.message);
+    res.status(500).json({ message: "Server error while fetching counts" });
+  }
+};
