@@ -11,6 +11,8 @@ const profileRoutes = require('./routes/profile')
 const userRoutes = require('./routes/user')
 const contactRoutes = require('./routes/contact')
 const instagramRoutes = require('./routes/instagram')
+const dashboardRoutes = require('./routes/dashboard');
+const campaignRoutes = require('./routes/campaign');
 
 connectDB();
 
@@ -40,6 +42,8 @@ app.use('/api/profile', profileRoutes)
 app.use('/api/user', userRoutes)
 app.use('/api/contact', contactRoutes)
 app.use('/api/instagram', instagramRoutes)
+app.use('/api/campaigns', campaignRoutes);
+app.use('/api/dashboard', dashboardRoutes);
 
 app.listen(Number(PORT), () => {
   console.log(`Server is listening at port ${PORT}`)
