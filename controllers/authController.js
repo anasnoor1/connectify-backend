@@ -244,10 +244,78 @@ exports.login = async (req, res) => {
 };
 
 // Google OAuth
+// exports.googleAuth = async (req, res) => {
+//   try {
+//     const { idToken } = req.body || {};
+//     if (!idToken) return res.status(400).json({ message: 'idToken is required' });
+
+//     const resp = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`);
+//     if (!resp.ok) return res.status(401).json({ message: 'Invalid Google token' });
+//     const payload = await resp.json();
+
+//     const clientId = process.env.GOOGLE_CLIENT_ID;
+//     if (!clientId) return res.status(500).json({ message: 'Server misconfigured: GOOGLE_CLIENT_ID missing' });
+//     if (payload.aud !== clientId) return res.status(401).json({ message: 'Google token audience mismatch' });
+
+//     const email = String(payload.email || '').toLowerCase();
+//     const name = payload.name || (email ? email.split('@')[0] : 'User');
+//     const emailVerified = payload.email_verified === true || payload.email_verified === 'true';
+//     if (!email || !emailVerified) return res.status(401).json({ message: 'Email not verified with Google' });
+
+//     let user = await User.findOne({ email });
+
+//     // Handle soft-deleted user reactivation
+//     if (user && user.is_deleted) {
+//       user.is_deleted = false;
+//       user.deletedAt = null;
+//     }
+
+//     if (!user) {
+//       const randomPwd = Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+//       const salt = await bcrypt.genSalt(10);
+//       const hashedPassword = await bcrypt.hash(randomPwd, salt);
+//       user = new User({
+//         name,
+//         email,
+//         password: hashedPassword,
+//         role: 'influencer',
+//         is_verified: true,
+//         status: 'active',
+//         is_deleted: false,
+//         otp: { code: null, expiresAt: null },
+//         google: {
+//           stableId: payload.sub,
+//           jsonToken: payload.jti,
+//           idToken: idToken,
+//           expire: payload.exp,
+//           issueTime: payload.iat
+//         },
+//       });
+//       await user.save();
+//     } else if (!user.is_verified) {
+//       user.is_verified = true;
+//       user.status = 'active';
+//       user.otp = { code: null, expiresAt: null };
+//       await user.save();
+//     }
+
+//     const token = jwt.sign({ id: user._id, email: user.email, role: user.role }, process.env.JWT_SECRET, { expiresIn: process.env.JWT_EXPIRES_IN || '7d' });
+//     return res.json({ token, user: { id: user._id, name: user.name, email: user.email, role: user.role } });
+//   } catch (err) {
+//     console.error('Google auth error:', err?.message || err);
+//     return res.status(500).json({ message: 'Server error' });
+//   }
+// };
+// In authController.js
 exports.googleAuth = async (req, res) => {
   try {
-    const { idToken } = req.body || {};
+    const { idToken, role = 'influencer' } = req.body || {};
     if (!idToken) return res.status(400).json({ message: 'idToken is required' });
+    
+    // Validate role
+    if (!['influencer', 'brand'].includes(role)) {
+      return res.status(400).json({ message: 'Invalid role' });
+    }
 
     const resp = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`);
     if (!resp.ok) return res.status(401).json({ message: 'Invalid Google token' });
@@ -263,6 +331,7 @@ exports.googleAuth = async (req, res) => {
     if (!email || !emailVerified) return res.status(401).json({ message: 'Email not verified with Google' });
 
     let user = await User.findOne({ email });
+    let isNewUser = false;
 
     // Handle soft-deleted user reactivation
     if (user && user.is_deleted) {
@@ -271,6 +340,7 @@ exports.googleAuth = async (req, res) => {
     }
 
     if (!user) {
+      isNewUser = true;
       const randomPwd = Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
       const salt = await bcrypt.genSalt(10);
       const hashedPassword = await bcrypt.hash(randomPwd, salt);
@@ -278,7 +348,7 @@ exports.googleAuth = async (req, res) => {
         name,
         email,
         password: hashedPassword,
-        role: 'influencer',
+        role: role, // Use the provided role
         is_verified: true,
         status: 'active',
         is_deleted: false,
@@ -300,7 +370,16 @@ exports.googleAuth = async (req, res) => {
     }
 
     const token = jwt.sign({ id: user._id, email: user.email, role: user.role }, process.env.JWT_SECRET, { expiresIn: process.env.JWT_EXPIRES_IN || '7d' });
-    return res.json({ token, user: { id: user._id, name: user.name, email: user.email, role: user.role } });
+    return res.json({ 
+      token, 
+      user: {    
+        id: user._id, 
+        name: user.name, 
+        email: user.email, 
+        role: user.role 
+      },
+      isNewUser // Indicate if this is a new user
+    });
   } catch (err) {
     console.error('Google auth error:', err?.message || err);
     return res.status(500).json({ message: 'Server error' });
@@ -432,5 +511,28 @@ exports.getCounts = async (req, res) => {
   } catch (err) {
     console.error("Count fetch error:", err.message);
     res.status(500).json({ message: "Server error while fetching counts" });
+  }
+};
+
+// In authController.js
+exports.checkEmail = async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) {
+      return res.status(400).json({ message: 'Email is required' });
+    }
+
+    const user = await User.findOne({ 
+      email: String(email).toLowerCase(),
+      is_deleted: false
+    });
+
+    return res.json({ 
+      exists: !!user,
+      role: user?.role || null
+    });
+  } catch (error) {
+    console.error('Check email error:', error);
+    return res.status(500).json({ message: 'Server error' });
   }
 };
