@@ -309,13 +309,8 @@ exports.login = async (req, res) => {
 // In authController.js
 exports.googleAuth = async (req, res) => {
   try {
-    const { idToken, role = 'influencer' } = req.body || {};
+    const { idToken, role } = req.body || {};
     if (!idToken) return res.status(400).json({ message: 'idToken is required' });
-    
-    // Validate role
-    if (!['influencer', 'brand'].includes(role)) {
-      return res.status(400).json({ message: 'Invalid role' });
-    }
 
     const resp = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`);
     if (!resp.ok) return res.status(401).json({ message: 'Invalid Google token' });
@@ -332,6 +327,7 @@ exports.googleAuth = async (req, res) => {
 
     let user = await User.findOne({ email });
     let isNewUser = false;
+    let roleForToken = user?.role || null;
 
     // Handle soft-deleted user reactivation
     if (user && user.is_deleted) {
@@ -340,7 +336,16 @@ exports.googleAuth = async (req, res) => {
     }
 
     if (!user) {
+      if (!role) {
+        return res.status(409).json({ message: 'Role required to finish Google sign-up', requiresRole: true });
+      }
+
       isNewUser = true;
+      const resolvedRole = ['influencer', 'brand'].includes(role) ? role : null;
+      if (!resolvedRole) {
+        return res.status(400).json({ message: 'Invalid role' });
+      }
+
       const randomPwd = Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
       const salt = await bcrypt.genSalt(10);
       const hashedPassword = await bcrypt.hash(randomPwd, salt);
@@ -348,7 +353,7 @@ exports.googleAuth = async (req, res) => {
         name,
         email,
         password: hashedPassword,
-        role: role, // Use the provided role
+        role: resolvedRole,
         is_verified: true,
         status: 'active',
         is_deleted: false,
@@ -362,21 +367,26 @@ exports.googleAuth = async (req, res) => {
         },
       });
       await user.save();
-    } else if (!user.is_verified) {
-      user.is_verified = true;
-      user.status = 'active';
-      user.otp = { code: null, expiresAt: null };
-      await user.save();
+      roleForToken = resolvedRole;
+    } else {
+      roleForToken = user.role;
+      if (!user.is_verified) {
+        user.is_verified = true;
+        user.status = 'active';
+        user.otp = { code: null, expiresAt: null };
+        await user.save();
+      }
     }
 
-    const token = jwt.sign({ id: user._id, email: user.email, role: user.role }, process.env.JWT_SECRET, { expiresIn: process.env.JWT_EXPIRES_IN || '7d' });
+    const tokenPayload = { id: user._id, email: user.email, role: roleForToken || user.role };
+    const token = jwt.sign(tokenPayload, process.env.JWT_SECRET, { expiresIn: process.env.JWT_EXPIRES_IN || '7d' });
     return res.json({ 
       token, 
       user: {    
         id: user._id, 
         name: user.name, 
         email: user.email, 
-        role: user.role 
+        role: tokenPayload.role 
       },
       isNewUser // Indicate if this is a new user
     });
