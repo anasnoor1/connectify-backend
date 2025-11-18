@@ -13,9 +13,9 @@ const contactRoutes = require('./routes/contact')
 const instagramRoutes = require('./routes/instagram')
 const dashboardRoutes = require('./routes/dashboard');
 const campaignRoutes = require('./routes/campaign');
-const proposalRoutes = require("./routes/proposal");
-
-
+const adminRoutes = require('./routes/admin');
+const ensureAdminUser = require('./utils/ensureAdminUser');
+const proposalRoutes = require("./routes/proposals");
 
 connectDB();
 ensureAdminUser();
