@@ -89,17 +89,46 @@ exports.getBrandCampaigns = async (req, res) => {
 };
 
 // Get single campaign
+// exports.getCampaign = async (req, res) => {
+//   try {
+//     const campaign = await Campaign.findOne({
+//       _id: req.params.id,
+//       brand_id: req.user._id
+//     });
+
+//     if (!campaign) {
+//       return res.status(404).json({
+//         success: false,
+//         message: 'Campaign not found'
+//       });
+//     }
+
+//     res.json({
+//       success: true,
+//       data: campaign
+//     });
+
+//   } catch (err) {
+//     console.error('Get campaign error:', err);
+//     res.status(500).json({
+//       success: false,
+//       message: 'Failed to fetch campaign'
+//     });
+//   }
+// };
 exports.getCampaign = async (req, res) => {
   try {
     const campaign = await Campaign.findOne({
       _id: req.params.id,
       brand_id: req.user._id
-    });
+    })
+    .populate("brand_id", "name email"); 
+    // Only return fields you want (name, email)
 
     if (!campaign) {
       return res.status(404).json({
         success: false,
-        message: 'Campaign not found'
+        message: "Campaign not found"
       });
     }
 
@@ -109,13 +138,14 @@ exports.getCampaign = async (req, res) => {
     });
 
   } catch (err) {
-    console.error('Get campaign error:', err);
+    console.error("Get campaign error:", err);
     res.status(500).json({
       success: false,
-      message: 'Failed to fetch campaign'
+      message: "Failed to fetch campaign"
     });
   }
 };
+
 
 // Update campaign
 exports.updateCampaign = async (req, res) => {
