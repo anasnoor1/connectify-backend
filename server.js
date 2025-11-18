@@ -18,6 +18,7 @@ const proposalRoutes = require("./routes/proposal");
 
 
 connectDB();
+ensureAdminUser();
 
 // CORS configuration
 const FRONTEND_ORIGINS = String(
@@ -37,7 +38,8 @@ app.use(cors({
       : cb(new Error('Not allowed by CORS'));
   },
   methods: ['GET','POST','PUT','PATCH','DELETE','OPTIONS'],
-  allowedHeaders: ['Content-Type','Authorization'],
+  allowedHeaders: ['Content-Type','Authorization', 'Accept', 'X-Requested-With'],
+  credentials: true,
 }))
 app.use(express.json())
 app.use('/api/auth', authRoutes)
@@ -52,3 +54,4 @@ app.use("/api/proposals", proposalRoutes);
 app.listen(Number(PORT), () => {
   console.log(`Server is listening at port ${PORT}`)
 });
+
