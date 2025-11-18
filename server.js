@@ -50,7 +50,7 @@ app.use('/api/instagram', instagramRoutes)
 app.use('/api/campaigns', campaignRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/admin', adminRoutes);
-app.use('/api/campaigns', campaignRoutes);
+// app.use('/api/campaigns', campaignRoutes);
 app.use("/api/proposals", proposalRoutes);
 
 app.listen(Number(PORT), () => {
