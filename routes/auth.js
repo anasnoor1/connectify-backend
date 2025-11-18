@@ -12,5 +12,6 @@ router.post('/password/forgot', authController.passwordForgot);
 router.post('/password/verify-reset', authController.verifyResetOtp);
 router.put('/password/update', authController.updatePassword);
 router.get("/counts", authController.getCounts);
+router.post('/check-email', authController.checkEmail);
 
 module.exports = router;
