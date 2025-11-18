@@ -51,30 +51,41 @@ exports.createCampaign = async (req, res) => {
   }
 };
 
-// Get all campaigns for brand
+// Get campaigns
 exports.getBrandCampaigns = async (req, res) => {
   try {
-    const brandId = req.user._id;
+    const { role, _id: userId } = req.user;
     const { status, page = 1, limit = 10 } = req.query;
 
-    let query = { brand_id: brandId };
+    const pageNum = parseInt(page, 10) || 1;
+    const limitNum = parseInt(limit, 10) || 10;
+
+    const query = {};
+    if (role !== 'influencer') {
+      query.brand_id = userId;
+    }
     if (status && status !== 'all') {
-      query.status = status;
+      query.status = status.toLowerCase();
     }
 
-    const campaigns = await Campaign.find(query)
+    let findQuery = Campaign.find(query)
       .sort({ created_at: -1 })
-      .limit(limit * 1)
-      .skip((page - 1) * limit);
+      .limit(limitNum)
+      .skip((pageNum - 1) * limitNum);
 
+    if (role === 'influencer') {
+      findQuery = findQuery.populate('brand_id', 'name email');
+    }
+
+    const campaigns = await findQuery;
     const total = await Campaign.countDocuments(query);
 
     res.json({
       success: true,
       data: {
         campaigns,
-        totalPages: Math.ceil(total / limit),
-        currentPage: parseInt(page),
+        totalPages: Math.ceil(total / limitNum),
+        currentPage: pageNum,
         total
       }
     });
@@ -89,9 +100,6 @@ exports.getBrandCampaigns = async (req, res) => {
 };
 
 // Get single campaign
-// exports.getCampaign = async (req, res) => {
-//   try {
-//     const campaign = await Campaign.findOne({
 //       _id: req.params.id,
 //       brand_id: req.user._id
 //     });
