@@ -33,7 +33,7 @@ function calculateProfileCompletion(profile, role) {
       if (profile[field] && String(profile[field]).trim() !== '') completedFields++;
     });
   } else {
-    const influencerFields = ['category', 'bio', 'avatar_url', 'social_links'];
+    const influencerFields = ['category', 'instagram_username', 'bio', 'avatar_url', 'social_links'];
     totalFields = influencerFields.length;
     influencerFields.forEach(field => {
       if (field === 'social_links') {
@@ -149,7 +149,7 @@ exports.upsertCompleteProfile = async (req, res) => {
       });
 
     } else if (user.role === 'influencer') {
-      const allowedFields = ['category', 'followers_count', 'engagement_rate', 'bio', 'social_links', 'avatar_url', 'phone'];
+      const allowedFields = ['category', 'instagram_username', 'followers_count', 'engagement_rate', 'bio', 'social_links', 'avatar_url', 'phone'];
       const body = pick(req.body, allowedFields);
 
       // Process numeric fields
@@ -354,7 +354,7 @@ exports.getInfluencerProfile = async (req, res) => {
 
 exports.upsertInfluencerProfile = async (req, res) => {
   try {
-    const allowed = ['category', 'followers_count', 'engagement_rate', 'bio', 'social_links', 'avatar_url', 'phone'];
+    const allowed = ['category', 'instagram_username', 'followers_count', 'engagement_rate', 'bio', 'social_links', 'avatar_url', 'phone'];
     const body = pick(req.body, allowed);
 
     if (body.followers_count !== undefined) {

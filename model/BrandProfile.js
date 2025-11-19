@@ -2,7 +2,19 @@ const mongoose = require("mongoose");
 
 const brandProfileSchema = new mongoose.Schema({
   brand_id: { type: mongoose.Schema.Types.ObjectId, ref: "User", unique: true },
-  company_name: { type: String, required: true, trim: true, minlength: 2 },
+  company_name: {
+    type: String,
+    required: true,
+    trim: true,
+    minlength: 2,
+    validate: {
+      validator: function (v) {
+        if (!v) return false;
+        return /^[A-Za-z\s]+$/.test(v);
+      },
+      message: 'Company name can only contain letters and spaces',
+    },
+  },
   industry: { type: String, trim: true },
   website: {
     type: String,
@@ -32,7 +44,10 @@ const brandProfileSchema = new mongoose.Schema({
     validate: {
       validator: function (v) {
         if (!v) return true;
-        return /^\+?[0-9]{10,15}$/.test(v.replace(/\s|-/g, ''));
+        const normalized = v.replace(/\s|-/g, '');
+        const pakRegex = /^(?:\+92|92|0)?3[0-9]{9}$/;
+        // allow either strict Pakistani mobile pattern or generic 10-15 digit international
+        return pakRegex.test(normalized) || /^\+?[0-9]{10,15}$/.test(normalized);
       },
       message: 'Invalid phone number',
     },

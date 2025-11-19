@@ -2,6 +2,7 @@ const mongoose = require("mongoose");
 
 const influencerProfileSchema = new mongoose.Schema({
   influencer_id: { type: mongoose.Schema.Types.ObjectId, ref: "User", unique: true },
+  instagram_username: { type: String, trim: true },
   category: { type: String, trim: true },
   followers_count: { type: Number, default: 0, min: 0 },
   engagement_rate: { type: Number, default: 0, min: 0, max: 100 }, // percentage 0-100
