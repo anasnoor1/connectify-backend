@@ -9,6 +9,7 @@ router.use(protect);
 // Campaign routes
 router.post('/', campaignController.createCampaign);
 router.get('/', campaignController.getBrandCampaigns);
+router.get("/suggestions",  campaignController.getSuggestedCampaigns);
 router.get('/:id', campaignController.getCampaign);
 router.put('/:id', campaignController.updateCampaign);
 router.delete('/:id', campaignController.deleteCampaign);

@@ -1,4 +1,5 @@
 const Campaign = require('../model/Campiagn');
+const InfluencerProfile = require("../model/InfluencerProfile");
 
 // Create new campaign
 exports.createCampaign = async (req, res) => {
@@ -215,6 +216,40 @@ exports.deleteCampaign = async (req, res) => {
       success: false,
       message: 'Failed to delete campaign'
     });
+  }
+};
+
+exports.getSuggestedCampaigns = async (req, res) => {
+  try {
+    const influencerId = req.user.id;
+
+    // get influencer profile
+    const profile = await InfluencerProfile.findOne({ influencer_id: influencerId });
+
+    if (!profile) {
+      return res.status(404).json({ message: "Influencer profile not found" });
+    }
+
+    const category = profile.category.toLowerCase();
+
+    if (!category) {
+      return res.status(400).json({ message: "Influencer has no category set" });
+    }
+
+    // find campaigns with same category
+    const suggestions = await Campaign.find({
+      category: category,
+      status: "active"
+    }).populate("brand_id", "name email");
+
+    return res.status(200).json({
+      success: true,
+      suggestions
+    });
+
+  } catch (error) {
+    console.error("Suggested Campaign Error:", error);
+    return res.status(500).json({ message: "Server Error" });
   }
 };
 
