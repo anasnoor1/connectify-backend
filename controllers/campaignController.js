@@ -24,6 +24,16 @@ exports.createCampaign = async (req, res) => {
       });
     }
 
+    if (requirements && requirements.min_followers !== undefined && requirements.min_followers !== null) {
+      const minFollowers = Number(requirements.min_followers);
+      if (!Number.isFinite(minFollowers) || minFollowers < 1000) {
+        return res.status(400).json({
+          success: false,
+          message: 'Minimum followers requirement must be at least 1000'
+        });
+      }
+    }
+
     const campaign = new Campaign({
       brand_id: brandId,
       title,
@@ -195,6 +205,16 @@ exports.updateCampaign = async (req, res) => {
       status: 'pending',
       updated_at: new Date(),
     };
+
+    if (updateData.requirements && updateData.requirements.min_followers !== undefined && updateData.requirements.min_followers !== null) {
+      const minFollowers = Number(updateData.requirements.min_followers);
+      if (!Number.isFinite(minFollowers) || minFollowers < 1000) {
+        return res.status(400).json({
+          success: false,
+          message: 'Minimum followers requirement must be at least 1000'
+        });
+      }
+    }
 
     const campaign = await Campaign.findOneAndUpdate(
       { _id: id, brand_id: req.user._id },
