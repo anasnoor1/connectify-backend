@@ -71,6 +71,9 @@ exports.getBrandDashboard = async (req, res) => {
       email: req.user.email,
       phone: brandProfile?.phone || null,
       website: brandProfile?.website || null,
+      // Expose avatar_url so ProfileEditor can keep the same image pre-filled
+      avatar_url: brandProfile?.avatar_url || null,
+      // Keep old avatar key for any existing usages
       avatar: brandProfile?.avatar_url || null,
       bio: brandProfile?.bio || null,
       createdAt: brandProfile?.created_at || req.user.createdAt || req.user.created_at || null

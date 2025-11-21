@@ -307,6 +307,121 @@ exports.searchProfiles = async (req, res) => {
   }
 };
 
+// Public read-only influencer profile by slug (for /profile/i/:slug)
+exports.getPublicInfluencerProfileBySlug = async (req, res) => {
+  try {
+    const { slug } = req.params;
+
+    if (!slug || typeof slug !== 'string') {
+      return res.status(400).json({ message: 'Invalid slug' });
+    }
+
+    // Match names like "Ali Khan" for slug "ali-khan" (case-insensitive)
+    const nameRegex = new RegExp('^' + slug.replace(/-/g, '[\\s-]+') + '$', 'i');
+
+    const user = await User.findOne({
+      role: 'influencer',
+      is_deleted: false,
+      name: { $regex: nameRegex },
+    }).select('_id name role is_verified status');
+
+    if (!user) {
+      return res.status(404).json({ message: 'Influencer not found' });
+    }
+
+    const profile = await InfluencerProfile.findOne({
+      influencer_id: user._id,
+    }).lean();
+
+    if (!profile) {
+      return res.status(404).json({ message: 'Influencer profile not found' });
+    }
+
+    return res.json({
+      data: {
+        id: user._id,
+        name: user.name,
+        role: user.role,
+        is_verified: user.is_verified,
+        status: user.status,
+        category: profile.category || null,
+        instagram_username: profile.instagram_username || null,
+        followers_count:
+          typeof profile.followers_count === 'number'
+            ? profile.followers_count
+            : null,
+        engagement_rate:
+          typeof profile.engagement_rate === 'number'
+            ? profile.engagement_rate
+            : null,
+        bio: profile.bio || '',
+        avatar_url: profile.avatar_url || '',
+        social_links: Array.isArray(profile.social_links)
+          ? profile.social_links
+          : [],
+      },
+    });
+  } catch (err) {
+    return res.status(500).json({ message: 'Failed to load influencer profile', error: err?.message });
+  }
+};
+
+// Public read-only brand profile by slug (for /profile/brand/:slug)
+exports.getPublicBrandProfileBySlug = async (req, res) => {
+  try {
+    const { slug } = req.params;
+
+    if (!slug || typeof slug !== 'string') {
+      return res.status(400).json({ message: 'Invalid slug' });
+    }
+
+    const nameRegex = new RegExp('^' + slug.replace(/-/g, '[\\s-]+') + '$', 'i');
+
+    // First try to match by company_name
+    let brandProfile = await BrandProfile.findOne({
+      company_name: { $regex: nameRegex },
+    }).populate('brand_id', 'name role is_verified status');
+
+    let user = brandProfile ? brandProfile.brand_id : null;
+
+    // Fallback: try to resolve by user.name when company_name does not match
+    if (!brandProfile) {
+      user = await User.findOne({
+        role: 'brand',
+        is_deleted: false,
+        name: { $regex: nameRegex },
+      }).select('name role is_verified status');
+
+      if (!user) {
+        return res.status(404).json({ message: 'Brand not found' });
+      }
+
+      brandProfile = await BrandProfile.findOne({ brand_id: user._id });
+    }
+
+    if (!brandProfile || !user) {
+      return res.status(404).json({ message: 'Brand profile not found' });
+    }
+
+    return res.json({
+      data: {
+        id: user._id,
+        name: user.name,
+        role: user.role,
+        is_verified: user.is_verified,
+        status: user.status,
+        company_name: brandProfile.company_name || user.name,
+        industry: brandProfile.industry || null,
+        website: brandProfile.website || '',
+        bio: brandProfile.bio || '',
+        avatar_url: brandProfile.avatar_url || '',
+      },
+    });
+  } catch (err) {
+    return res.status(500).json({ message: 'Failed to load brand profile', error: err?.message });
+  }
+};
+
 // Keep your existing methods for compatibility
 exports.getBrandProfile = async (req, res) => {
   try {

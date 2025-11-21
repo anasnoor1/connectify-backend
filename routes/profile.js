@@ -23,4 +23,8 @@ profileRouter.delete('/me', protect, profileController.deleteMyProfile);
 profileRouter.put('/avatar', protect, profileController.uploadAvatar);
 profileRouter.get('/search', protect, profileController.searchProfiles);
 
+// Public read-only profile routes (no auth required)
+profileRouter.get('/public/influencer/:slug', profileController.getPublicInfluencerProfileBySlug);
+profileRouter.get('/public/brand/:slug', profileController.getPublicBrandProfileBySlug);
+
 module.exports = profileRouter;

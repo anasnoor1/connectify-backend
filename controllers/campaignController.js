@@ -1,5 +1,6 @@
 const Campaign = require('../model/Campiagn');
 const InfluencerProfile = require("../model/InfluencerProfile");
+const BrandProfile = require("../model/BrandProfile");
 
 // Create new campaign
 exports.createCampaign = async (req, res) => {
@@ -62,10 +63,23 @@ exports.getBrandCampaigns = async (req, res) => {
     const limitNum = parseInt(limit, 10) || 10;
 
     const query = {};
+
+    // Brands/Admin: own campaigns (unless explicitly querying something else later)
     if (role !== 'influencer') {
       query.brand_id = userId;
     }
-    if (status && status !== 'all') {
+
+    // Status filtering:
+    // - For influencers: by default only show approved/active campaigns
+    //   unless a specific status is requested.
+    // - For brands: keep existing behaviour.
+    if (role === 'influencer') {
+      if (status && status !== 'all') {
+        query.status = status.toLowerCase();
+      } else {
+        query.status = 'active';
+      }
+    } else if (status && status !== 'all') {
       query.status = status.toLowerCase();
     }
 
@@ -79,6 +93,44 @@ exports.getBrandCampaigns = async (req, res) => {
     }
 
     const campaigns = await findQuery;
+
+    // For influencer views, enrich campaigns with brand avatar_url so
+    // the frontend can show brand profile picture in cards.
+    if (role === 'influencer' && campaigns && campaigns.length > 0) {
+      const brandIds = [
+        ...new Set(
+          campaigns
+            .map(c => {
+              if (!c.brand_id) return null;
+              // brand_id may be populated (object) or just an ID
+              return c.brand_id._id ? c.brand_id._id.toString() : c.brand_id.toString();
+            })
+            .filter(Boolean)
+        ),
+      ];
+
+      if (brandIds.length > 0) {
+        const brandProfiles = await BrandProfile.find({
+          brand_id: { $in: brandIds },
+        }).select('brand_id avatar_url');
+
+        const profileMap = {};
+        for (const bp of brandProfiles) {
+          if (bp.brand_id) {
+            profileMap[bp.brand_id.toString()] = bp.avatar_url || '';
+          }
+        }
+
+        campaigns.forEach(c => {
+          if (!c.brand_id) return;
+          const key = c.brand_id._id ? c.brand_id._id.toString() : c.brand_id.toString();
+          if (key && profileMap[key] !== undefined) {
+            c.brand_avatar_url = profileMap[key];
+          }
+        });
+      }
+    }
+
     const total = await Campaign.countDocuments(query);
 
     res.json({
@@ -101,30 +153,6 @@ exports.getBrandCampaigns = async (req, res) => {
 };
 
 // Get single campaign
-//       _id: req.params.id,
-//       brand_id: req.user._id
-//     });
-
-//     if (!campaign) {
-//       return res.status(404).json({
-//         success: false,
-//         message: 'Campaign not found'
-//       });
-//     }
-
-//     res.json({
-//       success: true,
-//       data: campaign
-//     });
-
-//   } catch (err) {
-//     console.error('Get campaign error:', err);
-//     res.status(500).json({
-//       success: false,
-//       message: 'Failed to fetch campaign'
-//     });
-//   }
-// };
 exports.getCampaign = async (req, res) => {
   try {
     const campaign = await Campaign.findOne({
@@ -132,7 +160,6 @@ exports.getCampaign = async (req, res) => {
       brand_id: req.user._id
     })
     .populate("brand_id", "name email"); 
-    // Only return fields you want (name, email)
 
     if (!campaign) {
       return res.status(404).json({
@@ -155,12 +182,19 @@ exports.getCampaign = async (req, res) => {
   }
 };
 
-
 // Update campaign
 exports.updateCampaign = async (req, res) => {
   try {
     const { id } = req.params;
-    const updateData = { ...req.body, updated_at: new Date() };
+
+    // When a brand edits a campaign, always send it back to pending
+    // so that admin can review and re-approve. Ignore any incoming
+    // status field from the request body.
+    const updateData = {
+      ...req.body,
+      status: 'pending',
+      updated_at: new Date(),
+    };
 
     const campaign = await Campaign.findOneAndUpdate(
       { _id: id, brand_id: req.user._id },
@@ -232,15 +266,45 @@ exports.getSuggestedCampaigns = async (req, res) => {
 
     const category = profile.category.toLowerCase();
 
-    if (!category) {
-      return res.status(400).json({ message: "Influencer has no category set" });
-    }
-
     // find campaigns with same category
     const suggestions = await Campaign.find({
       category: category,
       status: "active"
     }).populate("brand_id", "name email");
+
+    if (suggestions && suggestions.length > 0) {
+      const brandIds = [
+        ...new Set(
+          suggestions
+            .map(c => {
+              if (!c.brand_id) return null;
+              return c.brand_id._id ? c.brand_id._id.toString() : c.brand_id.toString();
+            })
+            .filter(Boolean)
+        ),
+      ];
+
+      if (brandIds.length > 0) {
+        const brandProfiles = await BrandProfile.find({
+          brand_id: { $in: brandIds },
+        }).select('brand_id avatar_url');
+
+        const profileMap = {};
+        for (const bp of brandProfiles) {
+          if (bp.brand_id) {
+            profileMap[bp.brand_id.toString()] = bp.avatar_url || '';
+          }
+        }
+
+        suggestions.forEach(c => {
+          if (!c.brand_id) return;
+          const key = c.brand_id._id ? c.brand_id._id.toString() : c.brand_id.toString();
+          if (key && profileMap[key] !== undefined) {
+            c.brand_avatar_url = profileMap[key];
+          }
+        });
+      }
+    }
 
     return res.status(200).json({
       success: true,
@@ -252,8 +316,6 @@ exports.getSuggestedCampaigns = async (req, res) => {
     return res.status(500).json({ message: "Server Error" });
   }
 };
-
-// const Campaign = require('../model/Campiagn');
 
 // // Create new campaign
 // exports.createCampaign = async (req, res) => {
