@@ -1,9 +1,13 @@
 const express = require("express");
 const cors = require('cors')
 require('dotenv').config()
-const app = express();
+const http = require("http");
+const socketIo = require("socket.io");
 
+const app = express();
+const server = http.createServer(app);
 const PORT = process.env.PORT || 5000;
+
 
 const connectDB = require('./database.js')
 const authRoutes = require('./routes/auth')
@@ -16,6 +20,14 @@ const campaignRoutes = require('./routes/campaign');
 const adminRoutes = require('./routes/admin');
 const ensureAdminUser = require('./utils/ensureAdminUser');
 const proposalRoutes = require("./routes/proposals");
+
+const io = socketIo(server, {
+  cors: { 
+    origin: "*", // You can restrict this to FRONTEND_ORIGINS if required
+  }
+});
+
+require("./socket")(io);
 
 connectDB();
 ensureAdminUser();
@@ -52,7 +64,15 @@ app.use('/api/campaigns', campaignRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use("/api/proposals", proposalRoutes);
 
-app.listen(Number(PORT), () => {
-  console.log(`Server is listening at port ${PORT}`)
+app.use("/api/chat", require("./routes/chatRoutes.js"));
+app.use("/api/message", require("./routes/messageRoute.js"));
+
+
+server.listen(Number(PORT), () => {
+  console.log(`Server running on port ${PORT}`);
 });
+
+// app.listen(Number(PORT), () => {
+//   console.log(`Server is listening at port ${PORT}`)
+// });
 
