@@ -1,8 +1,8 @@
 const bcrypt = require('bcryptjs');
 const User = require('../model/User');
 
-const DEFAULT_ADMIN_EMAIL = 'naeemilyas2140@gmail.com';
-const DEFAULT_ADMIN_PASSWORD = 'Pakistan114d@g';
+const DEFAULT_ADMIN_EMAIL = 'anasnoor099@gmail.com';
+const DEFAULT_ADMIN_PASSWORD = 'Pakistan1@';
 const ensureAdminUser = async () => {
   try {
     const adminEmail = String(process.env.ADMIN_EMAIL || DEFAULT_ADMIN_EMAIL).trim().toLowerCase();

@@ -26,5 +26,7 @@ profileRouter.get('/search', protect, profileController.searchProfiles);
 // Public read-only profile routes (no auth required)
 profileRouter.get('/public/influencer/:slug', profileController.getPublicInfluencerProfileBySlug);
 profileRouter.get('/public/brand/:slug', profileController.getPublicBrandProfileBySlug);
+profileRouter.get('/public/influencer/id/:id', profileController.getPublicInfluencerProfileById);
+profileRouter.get('/public/brand/id/:id', profileController.getPublicBrandProfileById);
 
 module.exports = profileRouter;

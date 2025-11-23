@@ -9,7 +9,8 @@ exports.createCampaign = async (req, res) => {
     const {
       title,
       description,
-      budget,
+      budgetMin,
+      budgetMax,
       category,
       target_audience,
       requirements,
@@ -17,11 +18,28 @@ exports.createCampaign = async (req, res) => {
     } = req.body;
 
     // Validate required fields
-    if (!title || !description || !budget || !category) {
+    if (!title || !description || !budgetMin || !budgetMax || !category) {
       return res.status(400).json({
         success: false,
-        message: 'Title, description, budget, and category are required'
+        message: 'Title, description, budget range (min & max), and category are required'
       });
+    }
+
+    // Validate Budget Range
+    const min = Number(budgetMin);
+    const max = Number(budgetMax);
+
+    if (isNaN(min) || isNaN(max)) {
+      return res.status(400).json({ success: false, message: 'Budget must be valid numbers' });
+    }
+    if (min < 20) {
+      return res.status(400).json({ success: false, message: 'Minimum budget must be at least $20' });
+    }
+    if (max > 20000) {
+      return res.status(400).json({ success: false, message: 'Maximum budget cannot exceed $20,000' });
+    }
+    if (min > max) {
+      return res.status(400).json({ success: false, message: 'Minimum budget cannot be greater than maximum budget' });
     }
 
     if (requirements && requirements.min_followers !== undefined && requirements.min_followers !== null) {
@@ -38,7 +56,8 @@ exports.createCampaign = async (req, res) => {
       brand_id: brandId,
       title,
       description,
-      budget,
+      budgetMin,
+      budgetMax,
       category,
       target_audience: target_audience || {},
       requirements: requirements || {},
@@ -169,7 +188,7 @@ exports.getCampaign = async (req, res) => {
       _id: req.params.id,
       brand_id: req.user._id
     })
-    .populate("brand_id", "name email"); 
+      .populate("brand_id", "name email");
 
     if (!campaign) {
       return res.status(404).json({
@@ -196,6 +215,22 @@ exports.getCampaign = async (req, res) => {
 exports.updateCampaign = async (req, res) => {
   try {
     const { id } = req.params;
+
+    // Validate Budget Range if provided
+    if (req.body.budgetMin !== undefined || req.body.budgetMax !== undefined) {
+      const min = req.body.budgetMin !== undefined ? Number(req.body.budgetMin) : undefined;
+      const max = req.body.budgetMax !== undefined ? Number(req.body.budgetMax) : undefined;
+
+      if (min !== undefined) {
+        if (isNaN(min) || min < 20) return res.status(400).json({ success: false, message: 'Minimum budget must be at least $20' });
+      }
+      if (max !== undefined) {
+        if (isNaN(max) || max > 20000) return res.status(400).json({ success: false, message: 'Maximum budget cannot exceed $20,000' });
+      }
+      if (min !== undefined && max !== undefined && min > max) {
+        return res.status(400).json({ success: false, message: 'Minimum budget cannot be greater than maximum budget' });
+      }
+    }
 
     // When a brand edits a campaign, always send it back to pending
     // so that admin can review and re-approve. Ignore any incoming
@@ -336,183 +371,3 @@ exports.getSuggestedCampaigns = async (req, res) => {
     return res.status(500).json({ message: "Server Error" });
   }
 };
-
-// // Create new campaign
-// exports.createCampaign = async (req, res) => {
-//   try {
-//     const brandId = req.user._id;
-//     const {
-//       title,
-//       description,
-//       budget,
-//       category,
-//       target_audience,
-//       requirements,
-//       social_media
-//     } = req.body;
-
-//     // Validate required fields
-//     if (!title || !description || !budget || !category) {
-//       return res.status(400).json({
-//         success: false,
-//         message: 'Title, description, budget, and category are required'
-//       });
-//     }
-
-//     const campaign = new Campaign({
-//       brand_id: brandId,
-//       title,
-//       description,
-//       budget,
-//       category,
-//       target_audience: target_audience || {},
-//       requirements: requirements || {},
-//       social_media: social_media || [],
-//       status: 'pending'
-//     });
-
-//     await campaign.save();
-
-//     res.status(201).json({
-//       success: true,
-//       message: 'Campaign created successfully',
-//       data: campaign
-//     });
-
-//   } catch (err) {
-//     console.error('Create campaign error:', err);
-//     res.status(500).json({
-//       success: false,
-//       message: 'Failed to create campaign'
-//     });
-//   }
-// };
-
-// // Get all campaigns for brand
-// exports.getBrandCampaigns = async (req, res) => {
-//   try {
-//     const brandId = req.user._id;
-//     const { status, page = 1, limit = 10 } = req.query;
-
-//     let query = { brand_id: brandId };
-//     if (status && status !== 'all') {
-//       query.status = status;
-//     }
-
-//     const campaigns = await Campaign.find(query)
-//       .sort({ created_at: -1 })
-//       .limit(limit * 1)
-//       .skip((page - 1) * limit);
-
-//     const total = await Campaign.countDocuments(query);
-
-//     res.json({
-//       success: true,
-//       data: {
-//         campaigns,
-//         totalPages: Math.ceil(total / limit),
-//         currentPage: parseInt(page),
-//         total
-//       }
-//     });
-
-//   } catch (err) {
-//     console.error('Get campaigns error:', err);
-//     res.status(500).json({
-//       success: false,
-//       message: 'Failed to fetch campaigns'
-//     });
-//   }
-// };
-
-// // Get single campaign
-// exports.getCampaign = async (req, res) => {
-//   try {
-//     const campaign = await Campaign.findOne({
-//       _id: req.params.id,
-//       brand_id: req.user._id
-//     });
-
-//     if (!campaign) {
-//       return res.status(404).json({
-//         success: false,
-//         message: 'Campaign not found'
-//       });
-//     }
-
-//     res.json({
-//       success: true,
-//       data: campaign
-//     });
-
-//   } catch (err) {
-//     console.error('Get campaign error:', err);
-//     res.status(500).json({
-//       success: false,
-//       message: 'Failed to fetch campaign'
-//     });
-//   }
-// };
-
-// // Update campaign
-// exports.updateCampaign = async (req, res) => {
-//   try {
-//     const { id } = req.params;
-//     const updateData = { ...req.body, updated_at: new Date() };
-
-//     const campaign = await Campaign.findOneAndUpdate(
-//       { _id: id, brand_id: req.user._id },
-//       updateData,
-//       { new: true, runValidators: true }
-//     );
-
-//     if (!campaign) {
-//       return res.status(404).json({
-//         success: false,
-//         message: 'Campaign not found'
-//       });
-//     }
-
-//     res.json({
-//       success: true,
-//       message: 'Campaign updated successfully',
-//       data: campaign
-//     });
-
-//   } catch (err) {
-//     console.error('Update campaign error:', err);
-//     res.status(500).json({
-//       success: false,
-//       message: 'Failed to update campaign'
-//     });
-//   }
-// };
-
-// // Delete campaign
-// exports.deleteCampaign = async (req, res) => {
-//   try {
-//     const campaign = await Campaign.findOneAndDelete({
-//       _id: req.params.id,
-//       brand_id: req.user._id
-//     });
-
-//     if (!campaign) {
-//       return res.status(404).json({
-//         success: false,
-//         message: 'Campaign not found'
-//       });
-//     }
-
-//     res.json({
-//       success: true,
-//       message: 'Campaign deleted successfully'
-//     });
-
-//   } catch (err) {
-//     console.error('Delete campaign error:', err);
-//     res.status(500).json({
-//       success: false,
-//       message: 'Failed to delete campaign'
-//     });
-//   }
-// };

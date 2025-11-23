@@ -131,7 +131,7 @@ exports.getUserChats = async (req, res) => {
     res.status(500).json({ success: false, message: "Server error" });
   }
 };
- 
+
 exports.getChatRoom = async (req, res) => {
   try {
     const { campaignId, participantId } = req.query;
@@ -141,24 +141,30 @@ exports.getChatRoom = async (req, res) => {
       return res.status(400).json({ error: "Participant ID is required" });
     }
 
-    let query = {
-      $or: [
-        { influencerId: userId, brandId: participantId },
-        { influencerId: participantId, brandId: userId }
-      ]
-    };
-
-    if (campaignId) {
-      query.campaignIds = campaignId;
-    }
-
-    const room = await ChatRoom.findOne(query)
-      .populate("influencerId", "name email")
-      .populate("brandId", "name email");
+    // Find a room that has BOTH participants
+    let room = await ChatRoom.findOne({
+      "participants.userId": { $all: [userId, participantId] }
+    })
+      .populate("participants.userId", "name email role") // Populate user details
+      .populate("campaignIds", "title"); // Populate campaign details if needed
 
     if (!room) return res.status(404).json({ error: "Room not found" });
 
-    res.json({ success: true, room });
+    // Transform response to include legacy fields if frontend expects them,
+    // or just return the room with populated participants.
+    // For compatibility with ChatPage.jsx which expects room.influencerId and room.brandId:
+
+    const roomObj = room.toObject();
+
+    // Helper to find participant by role
+    const influencer = roomObj.participants.find(p => p.role === 'influencer')?.userId;
+    const brand = roomObj.participants.find(p => p.role === 'brand')?.userId;
+
+    // Attach legacy fields for frontend compatibility
+    roomObj.influencerId = influencer;
+    roomObj.brandId = brand;
+
+    res.json({ success: true, room: roomObj });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });
