@@ -72,7 +72,5 @@ server.listen(Number(PORT), () => {
   console.log(`Server running on port ${PORT}`);
 });
 
-// app.listen(Number(PORT), () => {
-//   console.log(`Server is listening at port ${PORT}`)
-// });
+
 

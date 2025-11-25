@@ -5,7 +5,9 @@ const {protect} = require("../middleware/authMiddleware");
 const messageFilter = require("../middleware/messageFilter");
 const { getMessages, sendMessage } = require("../controllers/messageController");
 
-router.get("/:roomId", protect, getMessages);
 router.post("/", protect,messageFilter, sendMessage);
+router.get("/:roomId", protect, getMessages);
 
 module.exports = router;
+
+
