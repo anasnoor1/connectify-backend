@@ -38,4 +38,3 @@ ChatRoomSchema.index(
 );
 
 module.exports = mongoose.model("ChatRoom", ChatRoomSchema);
-

@@ -9,5 +9,3 @@ router.post("/", protect,messageFilter, sendMessage);
 router.get("/:roomId", protect, getMessages);
 
 module.exports = router;
-
-

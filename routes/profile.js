@@ -5,7 +5,7 @@ const profileController = require('../controllers/profileController');
 
 // Brand profile routes
 profileRouter.get('/brand', protect, profileController.getBrandProfile);
-profileRouter.put('/brand', protect, profileController.upsertBrandProfile);
+profileRouter.put('/brand', protect, profileController.upsertCompleteProfile);
 profileRouter.delete('/brand', protect, profileController.deleteBrandProfile);
 
 // Influencer profile routes
@@ -26,5 +26,7 @@ profileRouter.get('/search', protect, profileController.searchProfiles);
 // Public read-only profile routes (no auth required)
 profileRouter.get('/public/influencer/:slug', profileController.getPublicInfluencerProfileBySlug);
 profileRouter.get('/public/brand/:slug', profileController.getPublicBrandProfileBySlug);
+profileRouter.get('/public/influencer/id/:id', profileController.getPublicInfluencerProfileById);
+profileRouter.get('/public/brand/id/:id', profileController.getPublicBrandProfileById);
 
 module.exports = profileRouter;

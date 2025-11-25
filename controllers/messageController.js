@@ -1,5 +1,5 @@
 const Message = require("../model/Message");
-const cleanMessage = require("../middleware/messageFilter");
+// const cleanMessage = require("../middleware/messageFilter");
 
 exports.getMessages = async (req, res) => {
   const { roomId } = req.params;

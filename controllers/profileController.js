@@ -114,9 +114,9 @@ exports.upsertCompleteProfile = async (req, res) => {
 
       const query = { brand_id: req.user._id };
       const existing = await BrandProfile.findOne(query);
-      
+
       if (!existing && !body.company_name) {
-        return res.status(400).json({ 
+        return res.status(400).json({
           message: 'Company name is required for brand profile creation',
           required: ['company_name']
         });
@@ -124,11 +124,11 @@ exports.upsertCompleteProfile = async (req, res) => {
 
       const updatedProfile = await BrandProfile.findOneAndUpdate(
         query,
-        { 
-          $set: { 
-            ...body, 
+        {
+          $set: {
+            ...body,
             brand_id: req.user._id
-          } 
+          }
         },
         {
           upsert: true,
@@ -175,11 +175,11 @@ exports.upsertCompleteProfile = async (req, res) => {
 
       const updatedProfile = await InfluencerProfile.findOneAndUpdate(
         { influencer_id: req.user._id },
-        { 
-          $set: { 
-            ...body, 
+        {
+          $set: {
+            ...body,
             influencer_id: req.user._id
-          } 
+          }
         },
         {
           upsert: true,
@@ -195,7 +195,7 @@ exports.upsertCompleteProfile = async (req, res) => {
       return res.json({
         message: 'Influencer profile updated successfully',
         profile: updatedProfile,
-        stats: { 
+        stats: {
           profile_completion: completion,
           followers_count: updatedProfile.followers_count || 0,
           engagement_rate: updatedProfile.engagement_rate || 0
@@ -216,7 +216,7 @@ exports.upsertCompleteProfile = async (req, res) => {
 exports.uploadAvatar = async (req, res) => {
   try {
     const { avatar_url } = req.body;
-    
+
     if (!avatar_url) {
       return res.status(400).json({ message: 'Avatar URL is required' });
     }
@@ -267,7 +267,7 @@ exports.searchProfiles = async (req, res) => {
       const brands = await BrandProfile.find(brandQuery)
         .populate('brand_id', 'name email')
         .limit(20);
-      
+
       results = [...results, ...brands.map(brand => ({
         type: 'brand',
         profile: brand
@@ -294,7 +294,7 @@ exports.searchProfiles = async (req, res) => {
       const influencers = await InfluencerProfile.find(influencerQuery)
         .populate('influencer_id', 'name email')
         .limit(20);
-      
+
       results = [...results, ...influencers.map(influencer => ({
         type: 'influencer',
         profile: influencer
@@ -333,10 +333,7 @@ exports.getPublicInfluencerProfileBySlug = async (req, res) => {
       influencer_id: user._id,
     }).lean();
 
-    if (!profile) {
-      return res.status(404).json({ message: 'Influencer profile not found' });
-    }
-
+    // Return user data even if profile doesn't exist yet
     return res.json({
       data: {
         id: user._id,
@@ -344,21 +341,22 @@ exports.getPublicInfluencerProfileBySlug = async (req, res) => {
         role: user.role,
         is_verified: user.is_verified,
         status: user.status,
-        category: profile.category || null,
-        instagram_username: profile.instagram_username || null,
+        category: profile?.category || null,
+        instagram_username: profile?.instagram_username || null,
         followers_count:
-          typeof profile.followers_count === 'number'
+          typeof profile?.followers_count === 'number'
             ? profile.followers_count
             : null,
         engagement_rate:
-          typeof profile.engagement_rate === 'number'
+          typeof profile?.engagement_rate === 'number'
             ? profile.engagement_rate
             : null,
-        bio: profile.bio || '',
-        avatar_url: profile.avatar_url || '',
-        social_links: Array.isArray(profile.social_links)
+        bio: profile?.bio || '',
+        avatar_url: profile?.avatar_url || '',
+        social_links: Array.isArray(profile?.social_links)
           ? profile.social_links
           : [],
+        profile_incomplete: !profile,
       },
     });
   } catch (err) {
@@ -399,10 +397,11 @@ exports.getPublicBrandProfileBySlug = async (req, res) => {
       brandProfile = await BrandProfile.findOne({ brand_id: user._id });
     }
 
-    if (!brandProfile || !user) {
-      return res.status(404).json({ message: 'Brand profile not found' });
+    if (!user) {
+      return res.status(404).json({ message: 'Brand not found' });
     }
 
+    // Return user data even if profile doesn't exist yet
     return res.json({
       data: {
         id: user._id,
@@ -410,32 +409,14 @@ exports.getPublicBrandProfileBySlug = async (req, res) => {
         role: user.role,
         is_verified: user.is_verified,
         status: user.status,
-        company_name: brandProfile.company_name || user.name,
-        industry: brandProfile.industry || null,
-        website: brandProfile.website || '',
-        bio: brandProfile.bio || '',
-        avatar_url: brandProfile.avatar_url || '',
+        company_name: brandProfile?.company_name || user.name,
+        industry: brandProfile?.industry || null,
+        website: brandProfile?.website || '',
+        bio: brandProfile?.bio || '',
+        avatar_url: brandProfile?.avatar_url || '',
+        profile_incomplete: !brandProfile,
       },
     });
-  } catch (err) {
-    return res.status(500).json({ message: 'Failed to load brand profile', error: err?.message });
-  }
-};
-
-// Keep your existing methods for compatibility
-exports.getBrandProfile = async (req, res) => {
-  try {
-    const profile = await BrandProfile.findOne({ brand_id: req.user._id });
-    return res.json({ profile });
-  } catch (err) {
-    return res.status(500).json({ message: 'Server error', error: err?.message });
-  }
-};
-
-exports.upsertBrandProfile = async (req, res) => {
-  try {
-    const allowed = ['company_name', 'industry', 'website', 'bio', 'avatar_url', 'phone'];
-    const body = pick(req.body, allowed);
 
     const query = { brand_id: req.user._id };
     const existing = await BrandProfile.findOne(query);
@@ -455,6 +436,22 @@ exports.upsertBrandProfile = async (req, res) => {
     return res.json({ profile: updated });
   } catch (err) {
     return res.status(400).json({ message: 'Unable to save brand profile', error: err?.message });
+  }
+};
+
+// Get brand profile (used by /api/profile/brand GET)
+
+exports.getBrandProfile = async (req, res) => {
+  try {
+    const profile = await BrandProfile.findOne({ brand_id: req.user._id });
+    if (profile) {
+      return res.json({ profile });
+    }
+    // Fallback: return user's name as company_name when profile not created yet
+    const user = await User.findById(req.user._id).select('name');
+    return res.json({ profile: { company_name: user?.name || '' } });
+  } catch (err) {
+    return res.status(500).json({ message: 'Server error', error: err?.message });
   }
 };
 
@@ -536,5 +533,84 @@ exports.deleteMyProfile = async (req, res) => {
     return res.status(400).json({ message: 'Unsupported role for profile' });
   } catch (err) {
     return res.status(500).json({ message: 'Unable to delete profile', error: err?.message });
+  }
+};
+
+// Public read-only influencer profile by ID
+exports.getPublicInfluencerProfileById = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const user = await User.findById(id).select('_id name role is_verified status');
+
+    if (!user || user.role !== 'influencer') {
+      return res.status(404).json({ message: 'Influencer not found' });
+    }
+
+    const profile = await InfluencerProfile.findOne({ influencer_id: user._id }).lean();
+
+    // Return user data even if profile doesn't exist yet
+    return res.json({
+      data: {
+        id: user._id,
+        name: user.name,
+        role: user.role,
+        is_verified: user.is_verified,
+        status: user.status,
+        category: profile?.category || null,
+        instagram_username: profile?.instagram_username || null,
+        followers_count:
+          typeof profile?.followers_count === 'number'
+            ? profile.followers_count
+            : null,
+        engagement_rate:
+          typeof profile?.engagement_rate === 'number'
+            ? profile.engagement_rate
+            : null,
+        bio: profile?.bio || '',
+        avatar_url: profile?.avatar_url || '',
+        social_links: Array.isArray(profile?.social_links)
+          ? profile.social_links
+          : [],
+        profile_incomplete: !profile,
+      },
+    });
+  } catch (err) {
+    return res.status(500).json({ message: 'Failed to load influencer profile', error: err?.message });
+  }
+};
+
+// Public read-only brand profile by ID
+exports.getPublicBrandProfileById = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const user = await User.findById(id).select('_id name role is_verified status');
+
+    if (!user || user.role !== 'brand') {
+      return res.status(404).json({ message: 'Brand not found' });
+    }
+
+    const profile = await BrandProfile.findOne({ brand_id: user._id }).lean();
+
+    // Return user data even if profile doesn't exist yet
+    // This allows viewing basic brand info before they complete their profile
+    return res.json({
+      data: {
+        id: user._id,
+        name: user.name,
+        role: user.role,
+        is_verified: user.is_verified,
+        status: user.status,
+        company_name: profile?.company_name || user.name,
+        industry: profile?.industry || null,
+        website: profile?.website || '',
+        bio: profile?.bio || '',
+        avatar_url: profile?.avatar_url || '',
+        profile_incomplete: !profile, // Flag to indicate profile needs completion
+      },
+    });
+  } catch (err) {
+    return res.status(500).json({ message: 'Failed to load brand profile', error: err?.message });
   }
 };
