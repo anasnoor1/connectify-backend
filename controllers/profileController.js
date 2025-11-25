@@ -417,25 +417,6 @@ exports.getPublicBrandProfileBySlug = async (req, res) => {
         profile_incomplete: !brandProfile,
       },
     });
-  } catch (err) {
-    return res.status(500).json({ message: 'Failed to load brand profile', error: err?.message });
-  }
-};
-
-// Keep your existing methods for compatibility
-exports.getBrandProfile = async (req, res) => {
-  try {
-    const profile = await BrandProfile.findOne({ brand_id: req.user._id });
-    return res.json({ profile });
-  } catch (err) {
-    return res.status(500).json({ message: 'Server error', error: err?.message });
-  }
-};
-
-exports.upsertBrandProfile = async (req, res) => {
-  try {
-    const allowed = ['company_name', 'industry', 'website', 'bio', 'avatar_url', 'phone'];
-    const body = pick(req.body, allowed);
 
     const query = { brand_id: req.user._id };
     const existing = await BrandProfile.findOne(query);
@@ -455,6 +436,22 @@ exports.upsertBrandProfile = async (req, res) => {
     return res.json({ profile: updated });
   } catch (err) {
     return res.status(400).json({ message: 'Unable to save brand profile', error: err?.message });
+  }
+};
+
+// Get brand profile (used by /api/profile/brand GET)
+
+exports.getBrandProfile = async (req, res) => {
+  try {
+    const profile = await BrandProfile.findOne({ brand_id: req.user._id });
+    if (profile) {
+      return res.json({ profile });
+    }
+    // Fallback: return user's name as company_name when profile not created yet
+    const user = await User.findById(req.user._id).select('name');
+    return res.json({ profile: { company_name: user?.name || '' } });
+  } catch (err) {
+    return res.status(500).json({ message: 'Server error', error: err?.message });
   }
 };
 

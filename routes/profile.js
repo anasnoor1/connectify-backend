@@ -5,7 +5,7 @@ const profileController = require('../controllers/profileController');
 
 // Brand profile routes
 profileRouter.get('/brand', protect, profileController.getBrandProfile);
-profileRouter.put('/brand', protect, profileController.upsertBrandProfile);
+profileRouter.put('/brand', protect, profileController.upsertCompleteProfile);
 profileRouter.delete('/brand', protect, profileController.deleteBrandProfile);
 
 // Influencer profile routes
