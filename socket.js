@@ -1,32 +1,3 @@
-// const Message = require("./model/Message");
-// const cleanMessage = require("./middleware/messageFilter");
-
-// module.exports = (io) => {
-//   io.on("connection", (socket) => {
-//     console.log("User connected", socket.id);
-
-//     socket.on("join_room", (roomId) => {
-//       socket.join(roomId);
-//     });
-
-//     socket.on("send_message", async (data) => {
-//       const clean = cleanMessage(data.message);
-//       if (!clean) {
-//         return socket.emit("blocked", "Personal info not allowed");
-//       }
-
-//       const msg = await Message.create({
-//         roomId: data.roomId,
-//         senderId: data.senderId,
-//         message: clean,
-//       });
-
-//       io.to(data.roomId).emit("receive_message", msg);
-//     });
-//   });
-// };
-/////////////////////
-
 const jwt = require("jsonwebtoken");
 const Message = require("./model/Message");
 const cleanMessage = require("./middleware/messageFilter");

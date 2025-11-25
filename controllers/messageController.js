@@ -1,12 +1,5 @@
 const Message = require("../model/Message");
-const cleanMessage = require("../middleware/messageFilter");
-
-// exports.getMessages = async (req, res) => {
-//   const { roomId } = req.params;
-
-//   const messages = await Message.find({ roomId }).populate("senderId", "name role");
-//   res.json(messages);
-// };
+// const cleanMessage = require("../middleware/messageFilter");
 
 exports.getMessages = async (req, res) => {
   const { roomId } = req.params;

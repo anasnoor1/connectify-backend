@@ -1,6 +1,7 @@
 const Campaign = require('../model/Campiagn');
 const InfluencerProfile = require("../model/InfluencerProfile");
 const BrandProfile = require("../model/BrandProfile");
+const Proposal = require("../model/Proposal");
 
 // Create new campaign
 exports.createCampaign = async (req, res) => {
@@ -103,7 +104,9 @@ exports.getBrandCampaigns = async (req, res) => {
     //   unless a specific status is requested.
     // - For brands: keep existing behaviour.
     if (role === 'influencer') {
-      if (status && status !== 'all') {
+      if (status === 'all') {
+        query.status = { $in: ['active', 'completed'] };
+      } else if (status) {
         query.status = status.toLowerCase();
       } else {
         query.status = 'active';
@@ -123,24 +126,26 @@ exports.getBrandCampaigns = async (req, res) => {
 
     const campaigns = await findQuery;
 
-    // For influencer views, enrich campaigns with brand avatar_url so
-    // the frontend can show brand profile picture in cards.
-    if (role === 'influencer' && campaigns && campaigns.length > 0) {
-      const brandIds = [
-        ...new Set(
-          campaigns
-            .map(c => {
-              if (!c.brand_id) return null;
-              // brand_id may be populated (object) or just an ID
-              return c.brand_id._id ? c.brand_id._id.toString() : c.brand_id.toString();
-            })
-            .filter(Boolean)
-        ),
-      ];
+    // Convert to plain objects to allow adding properties
+    let campaignsData = campaigns.map(c => c.toObject());
 
+    // For influencer views, enrich campaigns with brand avatar_url and proposal status
+    if (role === 'influencer' && campaignsData.length > 0) {
+      const brandIds = [];
+      const campaignIds = [];
+
+      campaignsData.forEach(c => {
+        campaignIds.push(c._id);
+        if (c.brand_id) {
+          brandIds.push(c.brand_id._id ? c.brand_id._id.toString() : c.brand_id.toString());
+        }
+      });
+
+      // Fetch Brand Profiles
       if (brandIds.length > 0) {
+        const uniqueBrandIds = [...new Set(brandIds)];
         const brandProfiles = await BrandProfile.find({
-          brand_id: { $in: brandIds },
+          brand_id: { $in: uniqueBrandIds },
         }).select('brand_id avatar_url');
 
         const profileMap = {};
@@ -150,7 +155,7 @@ exports.getBrandCampaigns = async (req, res) => {
           }
         }
 
-        campaigns.forEach(c => {
+        campaignsData.forEach(c => {
           if (!c.brand_id) return;
           const key = c.brand_id._id ? c.brand_id._id.toString() : c.brand_id.toString();
           if (key && profileMap[key] !== undefined) {
@@ -158,6 +163,23 @@ exports.getBrandCampaigns = async (req, res) => {
           }
         });
       }
+
+      // Fetch Proposals by this influencer for these campaigns
+      const proposals = await Proposal.find({
+        campaignId: { $in: campaignIds },
+        influencerId: userId
+      }).select('campaignId status');
+
+      const proposalMap = {};
+      proposals.forEach(p => {
+        proposalMap[p.campaignId.toString()] = p.status;
+      });
+
+      campaignsData.forEach(c => {
+        if (proposalMap[c._id.toString()]) {
+          c.proposal_status = proposalMap[c._id.toString()];
+        }
+      });
     }
 
     const total = await Campaign.countDocuments(query);
@@ -165,7 +187,7 @@ exports.getBrandCampaigns = async (req, res) => {
     res.json({
       success: true,
       data: {
-        campaigns,
+        campaigns: campaignsData,
         totalPages: Math.ceil(total / limitNum),
         currentPage: pageNum,
         total
