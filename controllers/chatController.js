@@ -7,13 +7,36 @@ exports.openChat = async (req, res) => {
     const userId = req.user._id; // can be influencer or brand
     const { campaignId } = req.body;
 
+    console.log(`OpenChat request by ${req.user.role} ${userId} for campaign ${campaignId}`);
+
     const campaign = await Campaign.findById(campaignId).populate("brand_id");
     if (!campaign) return res.status(404).json({ error: "Campaign not found" });
 
-    const otherUserId =
-      req.user.role === "influencer"
-        ? campaign.brand_id._id
-        : campaign.influencer_id; // or some influencer field
+    let otherUserId;
+    let otherUserRole;
+
+    if (req.user.role === "influencer") {
+      if (!campaign.brand_id) {
+        console.error("Campaign has no brand_id populated:", campaign);
+        return res.status(400).json({ error: "Campaign has no associated brand" });
+      }
+      otherUserId = campaign.brand_id._id;
+      otherUserRole = "brand";
+    } else {
+      // If brand is opening chat, they must specify which influencer (e.g. from a proposal)
+      // For now, if not provided, we can't proceed easily unless we pass influencerId in body
+      if (req.body.influencerId) {
+        otherUserId = req.body.influencerId;
+        otherUserRole = "influencer";
+      } else {
+        // Fallback or error? 
+        // If the campaign doesn't have a single influencer_id field (which it doesn't seem to), 
+        // we can't guess.
+        return res.status(400).json({ error: "Influencer ID required to open chat as brand" });
+      }
+    }
+
+    console.log(`Looking for chat between ${userId} and ${otherUserId}`);
 
     // Look for a chat that contains both participants
     let room = await ChatRoom.findOne({
@@ -21,22 +44,36 @@ exports.openChat = async (req, res) => {
     });
 
     if (!room) {
+      console.log("Creating new chat room");
       room = await ChatRoom.create({
         participants: [
           { userId, role: req.user.role },
-          { userId: otherUserId, role: req.user.role === "influencer" ? "brand" : "influencer" }
+          { userId: otherUserId, role: otherUserRole }
         ],
         campaignIds: [campaignId]
       });
     } else {
+      console.log("Found existing chat room", room._id);
       if (!room.campaignIds.includes(campaignId)) {
         room.campaignIds.push(campaignId);
         await room.save();
       }
     }
 
+    // Verify persistence
+    const savedRoom = await ChatRoom.findById(room._id);
+    if (!savedRoom) {
+      console.error(`CRITICAL: Room ${room._id} created/found but not found by findById immediately!`);
+      return res.status(500).json({ error: "Failed to persist chat room" });
+    }
+
+    // Populate participants for the response
+    room = await room.populate("participants.userId", "name email role");
+
+    console.log(`Returning room ID: ${room._id}`);
     return res.json({ success: true, room });
   } catch (err) {
+    console.error("Error in openChat:", err);
     res.status(500).json({ error: err.message });
   }
 };
@@ -56,19 +93,25 @@ exports.getUserChats = async (req, res) => {
     res.status(500).json({ success: false, message: "Server error" });
   }
 };
- 
+
 
 exports.getChatRoom = async (req, res) => {
   try {
     const { roomId } = req.params;
+    console.log(`getChatRoom called with ID: ${roomId}`);
 
     const room = await ChatRoom.findById(roomId)
       .populate("participants.userId", "name email role");
 
-    if (!room) return res.status(404).json({ error: "Room not found" });
+    if (!room) {
+      console.log(`Room with ID ${roomId} not found in DB.`);
+      return res.status(404).json({ error: "Room not found" });
+    }
 
+    console.log(`Room found: ${room._id}`);
     res.json({ success: true, room });
   } catch (err) {
+    console.error(`Error in getChatRoom for ID ${req.params.roomId}:`, err);
     res.status(500).json({ error: err.message });
   }
 };

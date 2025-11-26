@@ -32,9 +32,9 @@ const ChatRoomSchema = new mongoose.Schema(
 );
 
 // Optional: ensure only one chat per pair of participants
-ChatRoomSchema.index(
-  { "participants.userId": 1 },
-  { unique: true, sparse: true } // sparse: avoid conflicts for multiple participants
-);
+// ChatRoomSchema.index(
+//   { "participants.userId": 1 },
+//   { unique: true, sparse: true } // sparse: avoid conflicts for multiple participants
+// );
 
 module.exports = mongoose.model("ChatRoom", ChatRoomSchema);
