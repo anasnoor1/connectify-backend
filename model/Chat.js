@@ -1,8 +1,9 @@
-
 const mongoose = require("mongoose");
 
 const ChatRoomSchema = new mongoose.Schema(
   {
+    // Deterministic key for a pair of users (sorted "userIdA:userIdB")
+    pairKey: { type: String, index: true, unique: true, sparse: true },
     participants: [
       {
         userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
@@ -31,10 +32,7 @@ const ChatRoomSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// Optional: ensure only one chat per pair of participants
-// ChatRoomSchema.index(
-//   { "participants.userId": 1 },
-//   { unique: true, sparse: true } // sparse: avoid conflicts for multiple participants
-// );
+// Note: Do NOT set a unique index on participants.userId, it blocks a user from being in multiple rooms.
+// We instead ensure pair-level uniqueness using pairKey above.
 
 module.exports = mongoose.model("ChatRoom", ChatRoomSchema);

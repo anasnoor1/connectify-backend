@@ -5,7 +5,11 @@ const Campaign = require("../model/Campiagn");
 exports.openChat = async (req, res) => {
   try {
     const userId = req.user._id; // can be influencer or brand
-    const { campaignId } = req.body;
+    const { campaignId, influencerId } = req.body;
+
+    if (!campaignId) {
+      return res.status(400).json({ error: "campaignId is required" });
+    }
 
     console.log(`OpenChat request by ${req.user.role} ${userId} for campaign ${campaignId}`);
 
@@ -25,33 +29,42 @@ exports.openChat = async (req, res) => {
     } else {
       // If brand is opening chat, they must specify which influencer (e.g. from a proposal)
       // For now, if not provided, we can't proceed easily unless we pass influencerId in body
-      if (req.body.influencerId) {
-        otherUserId = req.body.influencerId;
+      if (influencerId) {
+        otherUserId = influencerId;
         otherUserRole = "influencer";
       } else {
         // Fallback or error? 
         // If the campaign doesn't have a single influencer_id field (which it doesn't seem to), 
         // we can't guess.
-        return res.status(400).json({ error: "Influencer ID required to open chat as brand" });
+        return res.status(400).json({ error: "influencerId is required to open chat as brand" });
       }
     }
 
     console.log(`Looking for chat between ${userId} and ${otherUserId}`);
+    const pairKey = [String(userId), String(otherUserId)].sort().join(":");
 
-    // Look for a chat that contains both participants
-    let room = await ChatRoom.findOne({
-      "participants.userId": { $all: [userId, otherUserId] }
-    });
+    // Prefer pairKey for deterministic uniqueness
+    let room = await ChatRoom.findOne({ pairKey });
 
     if (!room) {
       console.log("Creating new chat room");
-      room = await ChatRoom.create({
-        participants: [
-          { userId, role: req.user.role },
-          { userId: otherUserId, role: otherUserRole }
-        ],
-        campaignIds: [campaignId]
-      });
+      try {
+        room = await ChatRoom.create({
+          pairKey,
+          participants: [
+            { userId, role: req.user.role },
+            { userId: otherUserId, role: otherUserRole }
+          ],
+          campaignIds: [campaignId]
+        });
+      } catch (createErr) {
+        // Handle race: if another request created the room concurrently, fetch it
+        if (createErr?.code === 11000) {
+          room = await ChatRoom.findOne({ pairKey });
+        } else {
+          throw createErr;
+        }
+      }
     } else {
       console.log("Found existing chat room", room._id);
       if (!room.campaignIds.includes(campaignId)) {
@@ -74,7 +87,7 @@ exports.openChat = async (req, res) => {
     return res.json({ success: true, room });
   } catch (err) {
     console.error("Error in openChat:", err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: err.message || "Internal server error" });
   }
 };
 
