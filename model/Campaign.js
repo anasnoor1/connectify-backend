@@ -42,7 +42,11 @@ const campaignSchema = new mongoose.Schema({
     min_followers: Number,
     min_engagement: Number,
     content_type: [String],
-    deadline: Date
+    deadline: Date,
+    max_influencers: {
+      type: Number,
+      default: 1,
+    },
   },
   social_media: [{
     platform: String,

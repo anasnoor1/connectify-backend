@@ -28,5 +28,7 @@ profileRouter.get('/public/influencer/:slug', profileController.getPublicInfluen
 profileRouter.get('/public/brand/:slug', profileController.getPublicBrandProfileBySlug);
 profileRouter.get('/public/influencer/id/:id', profileController.getPublicInfluencerProfileById);
 profileRouter.get('/public/brand/id/:id', profileController.getPublicBrandProfileById);
+profileRouter.get('/public/influencer/id/:id/collaborations', profileController.getPublicInfluencerCollaborations);
+profileRouter.get('/public/brand/id/:id/collaborations', profileController.getPublicBrandCollaborations);
 
 module.exports = profileRouter;
