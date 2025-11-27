@@ -15,7 +15,7 @@ const ChatRoomSchema = new mongoose.Schema(
       { type: mongoose.Schema.Types.ObjectId, ref: "Campaign" } // optional: associate campaigns
     ],
 
-    messages: [
+    messages: [       
       {
         senderId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
         text: { type: String, required: true },
