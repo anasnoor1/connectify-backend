@@ -1,6 +1,6 @@
 
 const ChatRoom = require("../model/Chat");
-const Campaign = require("../model/Campiagn");
+const Campaign = require("../model/Campaign");
 
 exports.openChat = async (req, res) => {
   try {
@@ -34,6 +34,7 @@ exports.openChat = async (req, res) => {
           return res.status(400).json({ error: "Campaign has no associated brand" });
         }
         otherUserId = campaign.brand_id._id;
+        console.log("campaign.brand_id._id : ", campaign.brand_id._id)
         otherUserRole = "brand";
       } else {
         // Brand must specify influencer for 1-1 chat
@@ -54,6 +55,7 @@ exports.openChat = async (req, res) => {
       if (!room) {
         console.log("Creating new 1-1 chat room");
         try {
+          console.log("otherUserId :", otherUserId)
           room = await ChatRoom.create({
             pairKey,
             participants: [
@@ -108,6 +110,7 @@ exports.openChat = async (req, res) => {
           participants: baseParticipants,
           campaignIds: [campaignId],
         });
+        console.log("it is the room : ", room);
       } else {
         // Make sure the current user is part of the group
         const currentIdStr = String(userId);
@@ -118,8 +121,8 @@ exports.openChat = async (req, res) => {
         }
       }
     }
-
-    // Verify persistence
+  // Verify persistence
+    // console.log("room._id : ", room._id);
     const savedRoom = await ChatRoom.findById(room._id);
     if (!savedRoom) {
       console.error(`CRITICAL: Room ${room._id} created/found but not found by findById immediately!`);

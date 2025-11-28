@@ -1,5 +1,5 @@
 const User = require('../model/User');
-const Campaign = require('../model/Campiagn');
+const Campaign = require('../model/Campaign');
 
 const ALLOWED_USER_STATUSES = ['pending_verification', 'active', 'blocked'];
 const ALLOWED_CAMPAIGN_STATUSES = ['pending', 'active', 'completed', 'cancelled'];

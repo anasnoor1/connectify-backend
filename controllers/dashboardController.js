@@ -1,4 +1,4 @@
-const Campaign = require('../model/Campiagn');
+const Campaign = require('../model/Campaign');
 const User = require('../model/User');
 const BrandProfile = require('../model/BrandProfile');
 

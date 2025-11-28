@@ -1,5 +1,5 @@
 const Proposal = require("../model/Proposal");
-const Campaign = require("../model/Campiagn");
+const Campaign = require("../model/Campaign");
 
 // Helper function to parse delivery time to days
 function parseDeliveryTimeToDays(deliveryTime) {
