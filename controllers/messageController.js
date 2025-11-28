@@ -1,4 +1,5 @@
 const Message = require("../model/Message");
+const ChatRoom = require("../model/Chat");
 // const cleanMessage = require("../middleware/messageFilter");
 
 exports.getMessages = async (req, res) => {
