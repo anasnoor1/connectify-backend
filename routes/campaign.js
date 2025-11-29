@@ -13,5 +13,6 @@ router.get("/suggestions",  campaignController.getSuggestedCampaigns);
 router.get('/:id', campaignController.getCampaign);
 router.put('/:id', campaignController.updateCampaign);
 router.delete('/:id', campaignController.deleteCampaign);
+router.post('/:id/influencer-complete', campaignController.markCompletedByInfluencer);
 
 module.exports = router;

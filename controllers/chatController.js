@@ -1,6 +1,7 @@
-
 const ChatRoom = require("../model/Chat");
 const Campaign = require("../model/Campaign");
+const BrandProfile = require("../model/BrandProfile");
+const InfluencerProfile = require("../model/InfluencerProfile");
 
 exports.openChat = async (req, res) => {
   try {
@@ -121,7 +122,8 @@ exports.openChat = async (req, res) => {
         }
       }
     }
-  // Verify persistence
+
+    // Verify persistence
     // console.log("room._id : ", room._id);
     const savedRoom = await ChatRoom.findById(room._id);
     if (!savedRoom) {
@@ -129,11 +131,55 @@ exports.openChat = async (req, res) => {
       return res.status(500).json({ error: "Failed to persist chat room" });
     }
 
-    // Populate participants for the response
+    // Populate participants for the response (basic user info)
     room = await room.populate("participants.userId", "name email role");
 
+    // Attach avatar_url to each participant based on role/profile
+    const roomObj = room.toObject();
+    const participantIds = [];
+
+    if (Array.isArray(roomObj.participants)) {
+      roomObj.participants.forEach(p => {
+        const u = p && p.userId;
+        if (u && u._id) {
+          participantIds.push(u._id.toString());
+        }
+      });
+    }
+
+    if (participantIds.length > 0) {
+      const uniqueIds = [...new Set(participantIds)];
+
+      const [brandProfiles, influencerProfiles] = await Promise.all([
+        BrandProfile.find({ brand_id: { $in: uniqueIds } }).select("brand_id avatar_url"),
+        InfluencerProfile.find({ influencer_id: { $in: uniqueIds } }).select("influencer_id avatar_url"),
+      ]);
+
+      const brandMap = {};
+      brandProfiles.forEach(bp => {
+        if (bp.brand_id) brandMap[bp.brand_id.toString()] = bp.avatar_url || "";
+      });
+
+      const influencerMap = {};
+      influencerProfiles.forEach(ip => {
+        if (ip.influencer_id) influencerMap[ip.influencer_id.toString()] = ip.avatar_url || "";
+      });
+
+      roomObj.participants.forEach(p => {
+        const u = p && p.userId;
+        if (!u || !u._id) return;
+        const key = u._id.toString();
+        if (u.role === "brand" && brandMap[key] !== undefined) {
+          u.avatar_url = brandMap[key];
+        } else if (u.role === "influencer" && influencerMap[key] !== undefined) {
+          u.avatar_url = influencerMap[key];
+        }
+      });
+    }
+
     console.log(`Returning room ID: ${room._id}`);
-    return res.json({ success: true, room });
+    return res.json({ success: true, room: roomObj });
+
   } catch (err) {
     console.error("Error in openChat:", err);
     res.status(500).json({ error: err.message || "Internal server error" });
@@ -150,12 +196,60 @@ exports.getUserChats = async (req, res) => {
       .populate("participants.userId", "name email role")
       .sort({ updatedAt: -1 });
 
-    res.status(200).json({ success: true, data: chats });
+    // Convert to plain objects to safely enrich data
+    const chatsData = chats.map(c => c.toObject());
+
+    // Collect all participant user IDs
+    const allUserIds = [];
+    chatsData.forEach(room => {
+      if (!Array.isArray(room.participants)) return;
+      room.participants.forEach(p => {
+        const u = p && p.userId;
+        if (u && u._id) {
+          allUserIds.push(u._id.toString());
+        }
+      });
+    });
+
+    if (allUserIds.length > 0) {
+      const uniqueIds = [...new Set(allUserIds)];
+
+      const [brandProfiles, influencerProfiles] = await Promise.all([
+        BrandProfile.find({ brand_id: { $in: uniqueIds } }).select("brand_id avatar_url"),
+        InfluencerProfile.find({ influencer_id: { $in: uniqueIds } }).select("influencer_id avatar_url"),
+      ]);
+
+      const brandMap = {};
+      brandProfiles.forEach(bp => {
+        if (bp.brand_id) brandMap[bp.brand_id.toString()] = bp.avatar_url || "";
+      });
+
+      const influencerMap = {};
+      influencerProfiles.forEach(ip => {
+        if (ip.influencer_id) influencerMap[ip.influencer_id.toString()] = ip.avatar_url || "";
+      });
+
+      chatsData.forEach(room => {
+        if (!Array.isArray(room.participants)) return;
+        room.participants.forEach(p => {
+          const u = p && p.userId;
+          if (!u || !u._id) return;
+          const key = u._id.toString();
+          if (u.role === "brand" && brandMap[key] !== undefined) {
+            u.avatar_url = brandMap[key];
+          } else if (u.role === "influencer" && influencerMap[key] !== undefined) {
+            u.avatar_url = influencerMap[key];
+          }
+        });
+      });
+    }
+
+    res.status(200).json({ success: true, data: chatsData });
+
   } catch (err) {
     res.status(500).json({ success: false, message: "Server error" });
   }
 };
-
 
 exports.getChatRoom = async (req, res) => {
   try {
@@ -170,8 +264,52 @@ exports.getChatRoom = async (req, res) => {
       return res.status(404).json({ error: "Room not found" });
     }
 
+    // Enrich room with avatar URLs similar to openChat
+    const roomObj = room.toObject();
+    const participantIds = [];
+
+    if (Array.isArray(roomObj.participants)) {
+      roomObj.participants.forEach(p => {
+        const u = p && p.userId;
+        if (u && u._id) {
+          participantIds.push(u._id.toString());
+        }
+      });
+    }
+
+    if (participantIds.length > 0) {
+      const uniqueIds = [...new Set(participantIds)];
+
+      const [brandProfiles, influencerProfiles] = await Promise.all([
+        BrandProfile.find({ brand_id: { $in: uniqueIds } }).select("brand_id avatar_url"),
+        InfluencerProfile.find({ influencer_id: { $in: uniqueIds } }).select("influencer_id avatar_url"),
+      ]);
+
+      const brandMap = {};
+      brandProfiles.forEach(bp => {
+        if (bp.brand_id) brandMap[bp.brand_id.toString()] = bp.avatar_url || "";
+      });
+
+      const influencerMap = {};
+      influencerProfiles.forEach(ip => {
+        if (ip.influencer_id) influencerMap[ip.influencer_id.toString()] = ip.avatar_url || "";
+      });
+
+      roomObj.participants.forEach(p => {
+        const u = p && p.userId;
+        if (!u || !u._id) return;
+        const key = u._id.toString();
+        if (u.role === "brand" && brandMap[key] !== undefined) {
+          u.avatar_url = brandMap[key];
+        } else if (u.role === "influencer" && influencerMap[key] !== undefined) {
+          u.avatar_url = influencerMap[key];
+        }
+      });
+    }
+
     console.log(`Room found: ${room._id}`);
-    res.json({ success: true, room });
+    res.json({ success: true, room: roomObj });
+
   } catch (err) {
     console.error(`Error in getChatRoom for ID ${req.params.roomId}:`, err);
     res.status(500).json({ error: err.message });

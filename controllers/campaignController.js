@@ -330,6 +330,66 @@ exports.deleteCampaign = async (req, res) => {
   }
 };
 
+// Mark campaign as completed by influencer (does not change overall status)
+exports.markCompletedByInfluencer = async (req, res) => {
+  try {
+    const { role, _id: userId } = req.user;
+    const { id } = req.params;
+
+    if (role !== 'influencer') {
+      return res.status(403).json({
+        success: false,
+        message: 'Only influencers can mark a campaign as completed from their side'
+      });
+    }
+
+    const campaign = await Campaign.findById(id);
+
+    if (!campaign) {
+      return res.status(404).json({
+        success: false,
+        message: 'Campaign not found'
+      });
+    }
+
+    // Only allow marking completion on active campaigns
+    if (campaign.status !== 'active') {
+      return res.status(400).json({
+        success: false,
+        message: 'Only active campaigns can be marked as completed by influencer'
+      });
+    }
+
+    // If already marked completed by this influencer, just acknowledge
+    if (campaign.influencerCompleted) {
+      return res.json({
+        success: true,
+        message: 'Campaign already marked completed by influencer',
+        data: campaign
+      });
+    }
+
+    campaign.influencerCompleted = true;
+    campaign.influencerCompletedAt = new Date();
+    campaign.updated_at = new Date();
+
+    await campaign.save();
+
+    return res.json({
+      success: true,
+      message: 'Campaign marked as completed by influencer. Awaiting admin confirmation.',
+      data: campaign
+    });
+
+  } catch (err) {
+    console.error('Mark campaign completed by influencer error:', err);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to mark campaign as completed by influencer'
+    });
+  }
+};
+
 exports.getSuggestedCampaigns = async (req, res) => {
   try {
     const influencerId = req.user.id;

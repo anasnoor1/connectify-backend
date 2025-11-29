@@ -99,9 +99,21 @@ exports.updateCampaignStatus = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Invalid campaign status' });
     }
 
+    const updateData = {
+      status,
+      updated_at: new Date(),
+    };
+
+    // Enable reviews only when campaign is fully completed
+    if (status === 'completed') {
+      updateData.reviewEnabled = true;
+    } else {
+      updateData.reviewEnabled = false;
+    }
+
     const campaign = await Campaign.findByIdAndUpdate(
       id,
-      { status, updated_at: new Date() },
+      updateData,
       { new: true, runValidators: true }
     );
 

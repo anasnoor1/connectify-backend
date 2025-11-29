@@ -32,6 +32,17 @@ const campaignSchema = new mongoose.Schema({
     enum: ["active", "pending", "completed", "cancelled"],
     default: "pending"
   },
+  reviewEnabled: {
+    type: Boolean,
+    default: false,
+  },
+  influencerCompleted: {
+    type: Boolean,
+    default: false
+  },
+  influencerCompletedAt: {
+    type: Date
+  },
   target_audience: {
     age_range: { min: Number, max: Number },
     gender: { type: String, enum: ["male", "female", "all"] },

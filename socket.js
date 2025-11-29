@@ -1,6 +1,8 @@
 const jwt = require("jsonwebtoken");
 const Message = require("./model/Message");
 const cleanMessage = require("./middleware/messageFilter");
+const BrandProfile = require("./model/BrandProfile");
+const InfluencerProfile = require("./model/InfluencerProfile");
 
 module.exports = (io) => {
 
@@ -35,7 +37,24 @@ module.exports = (io) => {
         message: clean,
       });
 
-      io.to(data.roomId).emit("receive_message", msg);
+      // Populate sender basic info
+      let populated = await Message.findById(msg._id).populate("senderId", "name role");
+      let payload = populated.toObject();
+
+      // Attach avatar_url for sender
+      const sender = payload.senderId;
+      if (sender && sender._id) {
+        const senderId = sender._id.toString();
+        if (sender.role === "brand") {
+          const bp = await BrandProfile.findOne({ brand_id: senderId }).select("avatar_url");
+          if (bp) sender.avatar_url = bp.avatar_url || "";
+        } else if (sender.role === "influencer") {
+          const ip = await InfluencerProfile.findOne({ influencer_id: senderId }).select("avatar_url");
+          if (ip) sender.avatar_url = ip.avatar_url || "";
+        }
+      }
+
+      io.to(data.roomId).emit("receive_message", payload);
     });
   });
 };

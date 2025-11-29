@@ -110,7 +110,7 @@ exports.getMyProposals = async (req, res) => {
     const proposals = await Proposal.find({ influencerId })
       .populate({
         path: "campaignId",
-        select: "title description category budgetMin budgetMax brand_id",
+        select: "title description category budgetMin budgetMax brand_id status reviewEnabled",
         populate: {
           path: "brand_id",
           select: "name company_name"
@@ -143,7 +143,7 @@ exports.getBrandProposals = async (req, res) => {
     const proposals = await Proposal.find({ campaignId: { $in: campaignIds } })
       .populate({
         path: "campaignId",
-        select: "title description category budgetMin budgetMax"
+        select: "title description category budgetMin budgetMax status reviewEnabled"
       })
       .populate({
         path: "influencerId",
