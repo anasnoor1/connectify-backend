@@ -19,7 +19,7 @@ const dashboardRoutes = require('./routes/dashboard');
 const campaignRoutes = require('./routes/campaign');
 const adminRoutes = require('./routes/admin');
 const ensureAdminUser = require('./utils/ensureAdminUser');
-const proposalRoutes = require("./routes/proposals");
+const proposalRoutes = require("./routes/proposal.js");
 const reviewRoutes = require('./routes/review');
 
 const io = socketIo(server, {
