@@ -5,13 +5,15 @@ const {
     getMyProposals,
     getBrandProposals,
     updateProposalStatus,
-    getAllProposals
+    getAllProposals,
+    getMyStats,
 } = require("../controllers/proposalController");
 const { protect, requireAdmin } = require("../middleware/authMiddleware");
 
 // Influencer routes
 router.post("/", protect, createProposal);
 router.get("/my", protect, getMyProposals);
+router.get("/my/stats", protect, getMyStats);
 
 // Brand routes
 router.get("/brand", protect, getBrandProposals);

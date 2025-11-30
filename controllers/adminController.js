@@ -1,5 +1,8 @@
 const User = require('../model/User');
 const Campaign = require('../model/Campaign');
+const Proposal = require('../model/Proposal');
+const ChatRoom = require('../model/Chat');
+const Message = require('../model/Message');
 
 const ALLOWED_USER_STATUSES = ['pending_verification', 'active', 'blocked'];
 const ALLOWED_CAMPAIGN_STATUSES = ['pending', 'active', 'completed', 'cancelled'];
@@ -99,6 +102,60 @@ exports.updateCampaignStatus = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Invalid campaign status' });
     }
 
+    // Load campaign first so we can validate completion rules and use brand_id later
+    const existingCampaign = await Campaign.findById(id);
+
+    if (!existingCampaign) {
+      return res.status(404).json({ success: false, message: 'Campaign not found' });
+    }
+
+    // When marking as completed, ensure the planned number of influencers
+    // (max_influencers, default 1) have all marked completion.
+    let influencerNamesForMessage = [];
+    if (status === 'completed') {
+      const maxInfluencers =
+        (existingCampaign.requirements && existingCampaign.requirements.max_influencers) || 1;
+
+      const completedProposals = await Proposal.find({
+        campaignId: id,
+        influencerMarkedComplete: true,
+      }).populate('influencerId', 'name');
+
+      if (completedProposals.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: 'Cannot mark campaign as completed without any influencers marking it completed',
+        });
+      }
+
+      if (completedProposals.length < maxInfluencers) {
+        return res.status(400).json({
+          success: false,
+          message: `All ${maxInfluencers} influencers must mark the campaign as completed before admin can complete it`,
+        });
+      }
+
+      // Mark proposals as admin-approved completion and collect influencer names
+      const now = new Date();
+      await Proposal.updateMany(
+        {
+          campaignId: id,
+          influencerMarkedComplete: true,
+        },
+        {
+          $set: {
+            adminApprovedCompletion: true,
+            adminCompletionApprovedAt: now,
+          },
+        }
+      );
+
+      influencerNamesForMessage = completedProposals
+        .filter(p => p.influencerId && p.influencerMarkedComplete)
+        .map(p => p.influencerId.name)
+        .filter(Boolean);
+    }
+
     const updateData = {
       status,
       updated_at: new Date(),
@@ -119,6 +176,37 @@ exports.updateCampaignStatus = async (req, res) => {
 
     if (!campaign) {
       return res.status(404).json({ success: false, message: 'Campaign not found' });
+    }
+
+    // After marking as completed, push a summary message into related chats
+    if (status === 'completed' && influencerNamesForMessage.length > 0) {
+      try {
+        const rooms = await ChatRoom.find({ campaignIds: id });
+        if (rooms && rooms.length > 0) {
+          const text = `Campaign completed by: ${influencerNamesForMessage.join(', ')}`;
+          const now = new Date();
+          const senderId = campaign.brand_id; // send as brand for visibility in chat
+
+          for (const room of rooms) {
+            await Message.create({
+              roomId: room._id,
+              senderId,
+              message: text,
+              isSystem: true,
+            });
+
+            room.lastMessage = {
+              text,
+              senderId,
+              createdAt: now,
+            };
+            await room.save();
+          }
+        }
+      } catch (err) {
+        // Log but do not fail the API if chat notification fails
+        console.error('Failed to send campaign completion message to chats:', err);
+      }
     }
 
     res.json({ success: true, message: 'Campaign status updated', data: campaign });

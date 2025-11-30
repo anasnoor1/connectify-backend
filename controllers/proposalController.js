@@ -32,6 +32,11 @@ exports.createProposal = async (req, res) => {
       return res.status(404).json({ msg: "Campaign not found" });
     }
 
+    // Do not allow proposals on completed or cancelled campaigns
+    if (campaign.status === 'completed' || campaign.status === 'cancelled') {
+      return res.status(400).json({ msg: "Cannot send proposals to a completed or cancelled campaign" });
+    }
+
     // Validate proposed amount is within campaign budget range
     const proposedAmount = Number(amount);
     if (isNaN(proposedAmount) || proposedAmount <= 0) {
@@ -100,6 +105,42 @@ exports.createProposal = async (req, res) => {
   } catch (error) {
     console.error("Proposal Error:", error);
     res.status(500).json({ msg: "Server error while sending proposal" });
+  }
+};
+
+// Get aggregate stats for the logged-in influencer
+exports.getMyStats = async (req, res) => {
+  try {
+    const influencerId = req.user._id;
+
+    const agg = await Proposal.aggregate([
+      {
+        $match: {
+          influencerId,
+          adminApprovedCompletion: true,
+        },
+      },
+      {
+        $group: {
+          _id: null,
+          completedCampaigns: { $sum: 1 },
+          totalEarned: { $sum: "$amount" },
+        },
+      },
+    ]);
+
+    const stats = agg[0] || { completedCampaigns: 0, totalEarned: 0 };
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        completedCampaigns: stats.completedCampaigns || 0,
+        totalEarned: stats.totalEarned || 0,
+      },
+    });
+  } catch (error) {
+    console.error("Get My Stats Error:", error);
+    return res.status(500).json({ success: false, msg: "Server error while fetching influencer stats" });
   }
 };
 

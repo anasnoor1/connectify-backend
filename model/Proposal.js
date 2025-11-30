@@ -29,6 +29,20 @@ const proposalSchema = new mongoose.Schema(
       enum: ["pending", "accepted", "rejected"],
       default: "pending",
     },
+    influencerMarkedComplete: {
+      type: Boolean,
+      default: false,
+    },
+    influencerCompletedAt: {
+      type: Date,
+    },
+    adminApprovedCompletion: {
+      type: Boolean,
+      default: false,
+    },
+    adminCompletionApprovedAt: {
+      type: Date,
+    },
   },
   { timestamps: true }
 );

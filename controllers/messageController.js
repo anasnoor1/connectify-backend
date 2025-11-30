@@ -2,6 +2,8 @@ const Message = require("../model/Message");
 const ChatRoom = require("../model/Chat");
 const BrandProfile = require("../model/BrandProfile");
 const InfluencerProfile = require("../model/InfluencerProfile");
+const Campaign = require("../model/Campaign");
+
 // const cleanMessage = require("../middleware/messageFilter");
 
 exports.getMessages = async (req, res) => {
@@ -61,6 +63,16 @@ exports.sendMessage = async (req, res) => {
     const { roomId, message } = req.body;
 
     // message is already validated by middleware
+    // Block sending messages if the associated campaign is completed
+    const room = await ChatRoom.findById(roomId).populate("campaignIds", "status");
+    if (room && room.campaignIds && room.campaignIds.length > 0) {
+      const hasCompletedCampaign = room.campaignIds.some((c) => c && c.status === "completed");
+      if (hasCompletedCampaign) {
+        return res.status(400).json({
+          error: "This campaign is completed. You cannot send new messages in this chat.",
+        });
+      }
+    }
 
     const newMsg = await Message.create({
       roomId,

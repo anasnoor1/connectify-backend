@@ -177,6 +177,20 @@ exports.openChat = async (req, res) => {
       });
     }
 
+    // Determine if this chat should be read-only (any associated campaign completed)
+    try {
+      if (Array.isArray(roomObj.campaignIds) && roomObj.campaignIds.length > 0) {
+        const campaignIds = roomObj.campaignIds.map(c => (c && c._id) ? c._id : c);
+        const campaigns = await Campaign.find({ _id: { $in: campaignIds } }).select('status');
+        roomObj.isReadOnly = campaigns.some(c => c.status === 'completed');
+      } else {
+        roomObj.isReadOnly = false;
+      }
+    } catch (err) {
+      console.error('Failed to determine chat read-only status:', err);
+      roomObj.isReadOnly = false;
+    }
+
     console.log(`Returning room ID: ${room._id}`);
     return res.json({ success: true, room: roomObj });
 
@@ -305,6 +319,20 @@ exports.getChatRoom = async (req, res) => {
           u.avatar_url = influencerMap[key];
         }
       });
+    }
+
+    // Determine if this chat should be read-only (any associated campaign completed)
+    try {
+      if (Array.isArray(roomObj.campaignIds) && roomObj.campaignIds.length > 0) {
+        const campaignIds = roomObj.campaignIds.map(c => (c && c._id) ? c._id : c);
+        const campaigns = await Campaign.find({ _id: { $in: campaignIds } }).select('status');
+        roomObj.isReadOnly = campaigns.some(c => c.status === 'completed');
+      } else {
+        roomObj.isReadOnly = false;
+      }
+    } catch (err) {
+      console.error('Failed to determine chat read-only status in getChatRoom:', err);
+      roomObj.isReadOnly = false;
     }
 
     console.log(`Room found: ${room._id}`);

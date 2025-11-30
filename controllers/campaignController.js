@@ -164,20 +164,28 @@ exports.getBrandCampaigns = async (req, res) => {
         });
       }
 
-      // Fetch Proposals by this influencer for these campaigns
+      // Fetch Proposals by this influencer for these campaigns, including completion flag
       const proposals = await Proposal.find({
         campaignId: { $in: campaignIds },
         influencerId: userId
-      }).select('campaignId status');
+      }).select('campaignId status influencerMarkedComplete');
 
       const proposalMap = {};
       proposals.forEach(p => {
-        proposalMap[p.campaignId.toString()] = p.status;
+        proposalMap[p.campaignId.toString()] = {
+          status: p.status,
+          influencerMarkedComplete: !!p.influencerMarkedComplete,
+        };
       });
 
       campaignsData.forEach(c => {
-        if (proposalMap[c._id.toString()]) {
-          c.proposal_status = proposalMap[c._id.toString()];
+        const mapEntry = proposalMap[c._id.toString()];
+        if (mapEntry) {
+          c.proposal_status = mapEntry.status;
+          // For influencer views, treat influencerCompleted as a per-influencer flag
+          if (mapEntry.influencerMarkedComplete) {
+            c.influencerCompleted = true;
+          }
         }
       });
     }
@@ -330,7 +338,7 @@ exports.deleteCampaign = async (req, res) => {
   }
 };
 
-// Mark campaign as completed by influencer (does not change overall status)
+// Mark campaign as completed by influencer (per accepted proposal; does not directly change overall status)
 exports.markCompletedByInfluencer = async (req, res) => {
   try {
     const { role, _id: userId } = req.user;
@@ -360,25 +368,57 @@ exports.markCompletedByInfluencer = async (req, res) => {
       });
     }
 
-    // If already marked completed by this influencer, just acknowledge
-    if (campaign.influencerCompleted) {
-      return res.json({
-        success: true,
-        message: 'Campaign already marked completed by influencer',
-        data: campaign
+    // Find this influencer's proposal for the campaign (no need for explicit brand acceptance)
+    const proposal = await Proposal.findOne({
+      campaignId: id,
+      influencerId: userId,
+    });
+
+    if (!proposal) {
+      return res.status(400).json({
+        success: false,
+        message: 'You must have a proposal on this campaign before marking it as completed',
       });
     }
 
-    campaign.influencerCompleted = true;
-    campaign.influencerCompletedAt = new Date();
-    campaign.updated_at = new Date();
+    // If already marked completed by this influencer, just acknowledge
+    if (proposal.influencerMarkedComplete) {
+      return res.json({
+        success: true,
+        message: 'You have already marked this campaign as completed from your side',
+      });
+    }
 
-    await campaign.save();
+    proposal.influencerMarkedComplete = true;
+    proposal.influencerCompletedAt = new Date();
+    await proposal.save();
+
+    // Recompute campaign-level influencerCompleted: true only when
+    // the planned number of influencers (max_influencers, default 1)
+    // have all marked completion.
+    const completedCount = await Proposal.countDocuments({
+      campaignId: id,
+      influencerMarkedComplete: true,
+    });
+
+    const maxInfluencers =
+      (campaign.requirements && campaign.requirements.max_influencers) || 1;
+
+    const allCompleted = completedCount >= maxInfluencers;
+
+    if (allCompleted) {
+      campaign.influencerCompleted = true;
+      campaign.influencerCompletedAt = new Date();
+      campaign.updated_at = new Date();
+
+      await campaign.save();
+    }
 
     return res.json({
       success: true,
-      message: 'Campaign marked as completed by influencer. Awaiting admin confirmation.',
-      data: campaign
+      message: allCompleted
+        ? 'You marked this campaign as completed. All collaborating influencers have completed; waiting for admin to mark campaign completed.'
+        : 'You marked this campaign as completed from your side. Waiting for other influencers to complete.',
     });
 
   } catch (err) {
