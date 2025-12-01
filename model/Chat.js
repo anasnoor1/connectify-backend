@@ -10,12 +10,20 @@ const ChatRoomSchema = new mongoose.Schema(
         role: { type: String, enum: ["brand", "influencer"], required: true }
       }
     ],
-
+    
+    isGroup: { type: Boolean, default: false },
+    groupName: { type: String },
+    
     campaignIds: [
       { type: mongoose.Schema.Types.ObjectId, ref: "Campaign" } // optional: associate campaigns
     ],
+<<<<<<< HEAD
 
     messages: [       
+=======
+    
+    messages: [
+>>>>>>> e5b99c4dea9451716d38889958701bcab38f91a4
       {
         senderId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
         text: { type: String, required: true },

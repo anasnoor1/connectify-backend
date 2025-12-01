@@ -15,60 +15,106 @@ exports.openChat = async (req, res) => {
     const campaign = await Campaign.findById(campaignId).populate("brand_id");
     if (!campaign) return res.status(404).json({ error: "Campaign not found" });
 
+    const maxInfluencers =
+      (campaign.requirements && typeof campaign.requirements.max_influencers === "number"
+        ? campaign.requirements.max_influencers
+        : 1) || 1;
+
     let otherUserId;
     let otherUserRole;
 
-    if (req.user.role === "influencer") {
-      if (!campaign.brand_id) {
-        console.error("Campaign has no brand_id populated:", campaign);
-        return res.status(400).json({ error: "Campaign has no associated brand" });
-      }
-      otherUserId = campaign.brand_id._id;
-      otherUserRole = "brand";
-    } else {
-      // If brand is opening chat, they must specify which influencer (e.g. from a proposal)
-      // For now, if not provided, we can't proceed easily unless we pass influencerId in body
-      if (influencerId) {
-        otherUserId = influencerId;
-        otherUserRole = "influencer";
+    let room;
+
+    // Single-influencer campaign: strict 1-1 chat using pairKey
+    if (maxInfluencers <= 1) {
+      if (req.user.role === "influencer") {
+        if (!campaign.brand_id) {
+          console.error("Campaign has no brand_id populated:", campaign);
+          return res.status(400).json({ error: "Campaign has no associated brand" });
+        }
+        otherUserId = campaign.brand_id._id;
+        otherUserRole = "brand";
       } else {
-        // Fallback or error? 
-        // If the campaign doesn't have a single influencer_id field (which it doesn't seem to), 
-        // we can't guess.
-        return res.status(400).json({ error: "influencerId is required to open chat as brand" });
-      }
-    }
-
-    console.log(`Looking for chat between ${userId} and ${otherUserId}`);
-    const pairKey = [String(userId), String(otherUserId)].sort().join(":");
-
-    // Prefer pairKey for deterministic uniqueness
-    let room = await ChatRoom.findOne({ pairKey });
-
-    if (!room) {
-      console.log("Creating new chat room");
-      try {
-        room = await ChatRoom.create({
-          pairKey,
-          participants: [
-            { userId, role: req.user.role },
-            { userId: otherUserId, role: otherUserRole }
-          ],
-          campaignIds: [campaignId]
-        });
-      } catch (createErr) {
-        // Handle race: if another request created the room concurrently, fetch it
-        if (createErr?.code === 11000) {
-          room = await ChatRoom.findOne({ pairKey });
+        // Brand must specify influencer for 1-1 chat
+        if (influencerId) {
+          otherUserId = influencerId;
+          otherUserRole = "influencer";
         } else {
-          throw createErr;
+          return res.status(400).json({ error: "influencerId is required to open chat as brand" });
+        }
+      }
+
+      console.log(`Looking for chat between ${userId} and ${otherUserId}`);
+      const pairKey = [String(userId), String(otherUserId)].sort().join(":");
+
+      // Prefer pairKey for deterministic uniqueness
+      room = await ChatRoom.findOne({ pairKey });
+
+      if (!room) {
+        console.log("Creating new 1-1 chat room");
+        try {
+          room = await ChatRoom.create({
+            pairKey,
+            participants: [
+              { userId, role: req.user.role },
+              { userId: otherUserId, role: otherUserRole }
+            ],
+            campaignIds: [campaignId]
+          });
+        } catch (createErr) {
+          // Handle race: if another request created the room concurrently, fetch it
+          if (createErr?.code === 11000) {
+            room = await ChatRoom.findOne({ pairKey });
+          } else {
+            throw createErr;
+          }
+        }
+      } else {
+        console.log("Found existing 1-1 chat room", room._id);
+        if (!room.campaignIds.includes(campaignId)) {
+          room.campaignIds.push(campaignId);
+          await room.save();
         }
       }
     } else {
-      console.log("Found existing chat room", room._id);
-      if (!room.campaignIds.includes(campaignId)) {
-        room.campaignIds.push(campaignId);
-        await room.save();
+      // Multi-influencer campaign: use a shared group room per campaign
+      console.log("Opening group chat for campaign", campaignId);
+
+      room = await ChatRoom.findOne({
+        isGroup: true,
+        campaignIds: campaignId,
+      });
+
+      if (!room) {
+        console.log("Creating new group chat room for campaign");
+
+        const baseParticipants = [];
+
+        // Ensure brand owner is always in the group
+        if (campaign.brand_id) {
+          baseParticipants.push({ userId: campaign.brand_id._id || campaign.brand_id, role: "brand" });
+        }
+
+        // Add the current user if not already in baseParticipants
+        const currentIdStr = String(userId);
+        if (!baseParticipants.some(p => String(p.userId) === currentIdStr)) {
+          baseParticipants.push({ userId, role: req.user.role });
+        }
+
+        room = await ChatRoom.create({
+          isGroup: true,
+          groupName: campaign.title,
+          participants: baseParticipants,
+          campaignIds: [campaignId],
+        });
+      } else {
+        // Make sure the current user is part of the group
+        const currentIdStr = String(userId);
+        const alreadyIn = room.participants.some(p => String(p.userId) === currentIdStr);
+        if (!alreadyIn) {
+          room.participants.push({ userId, role: req.user.role });
+          await room.save();
+        }
       }
     }
 
