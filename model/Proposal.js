@@ -43,6 +43,32 @@ const proposalSchema = new mongoose.Schema(
     adminCompletionApprovedAt: {
       type: Date,
     },
+    paymentStatus: {
+      type: String,
+      enum: ["unpaid", "paid", "released"],
+      default: "unpaid",
+    },
+    paymentIntentId: {
+      type: String,
+    },
+    brandPaidAmount: {
+      type: Number,
+    },
+    platformFeeFromBrand: {
+      type: Number,
+    },
+    platformFeeFromInfluencer: {
+      type: Number,
+    },
+    influencerGrossAmount: {
+      type: Number,
+    },
+    influencerNetAmount: {
+      type: Number,
+    },
+    payoutReleasedAt: {
+      type: Date,
+    },
   },
   { timestamps: true }
 );
