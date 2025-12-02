@@ -1,6 +1,12 @@
 const mongoose = require("mongoose");
 const Proposal = require("../model/Proposal");
 const Campaign = require("../model/Campaign");
+const Transaction = require("../model/Transaction");
+const Stripe = require("stripe");
+const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
+const stripe = stripeSecretKey ? Stripe(stripeSecretKey) : null;
+const STRIPE_CURRENCY = process.env.STRIPE_CURRENCY || "usd";
+const APP_FEE_PERCENT = 0.10;
 
 // Helper function to parse delivery time to days
 function parseDeliveryTimeToDays(deliveryTime) {
@@ -212,31 +218,165 @@ exports.updateProposalStatus = async (req, res) => {
       return res.status(400).json({ msg: "Invalid status. Must be 'accepted' or 'rejected'" });
     }
 
-    // Find the proposal
     const proposal = await Proposal.findById(proposalId).populate('campaignId');
 
     if (!proposal) {
       return res.status(404).json({ msg: "Proposal not found" });
     }
 
-    // Verify the campaign belongs to this brand
     if (proposal.campaignId.brand_id.toString() !== brandId.toString()) {
       return res.status(403).json({ msg: "You don't have permission to update this proposal" });
     }
 
-    // Update the proposal status
-    proposal.status = status;
+    let clientSecret = null;
+
+    if (status === "accepted") {
+      proposal.status = "accepted";
+
+      if (!proposal.paymentIntentId) {
+        const amountNumber = typeof proposal.amount === "number" ? proposal.amount : Number(proposal.amount) || 0;
+        if (!amountNumber || amountNumber <= 0) {
+          return res.status(400).json({ msg: "Invalid proposal amount for payment" });
+        }
+
+        if (!stripe || !process.env.STRIPE_SECRET_KEY) {
+          return res.status(500).json({ msg: "Stripe is not configured on the server" });
+        }
+
+        const amountInMinor = Math.round(amountNumber * 100);
+
+        const paymentIntent = await stripe.paymentIntents.create({
+          amount: amountInMinor,
+          currency: STRIPE_CURRENCY,
+          metadata: {
+            proposalId: String(proposal._id),
+            campaignId: String(proposal.campaignId._id),
+            brandId: String(proposal.campaignId.brand_id),
+            influencerId: String(proposal.influencerId),
+          },
+          automatic_payment_methods: { enabled: true },
+        });
+
+        const appFee = Number((amountNumber * APP_FEE_PERCENT).toFixed(2));
+        const influencerAmount = Number((amountNumber - appFee).toFixed(2));
+
+        const brandUserId = proposal.campaignId.brand_id;
+
+        const tx = await Transaction.create({
+          user_id: brandUserId,
+          amount: amountNumber,
+          transaction_type: "debit",
+          status: "pending",
+          campaignId: proposal.campaignId._id,
+          proposalId: proposal._id,
+          stripePaymentIntentId: paymentIntent.id,
+          currency: STRIPE_CURRENCY,
+          app_fee: appFee,
+          influencer_amount: influencerAmount,
+          isPayout: false,
+          description: `Brand payment for proposal ${proposal._id}`,
+        });
+
+        proposal.paymentStatus = "pending";
+        proposal.paymentIntentId = paymentIntent.id;
+        proposal.brandTransactionId = tx._id;
+        clientSecret = paymentIntent.client_secret;
+      } else {
+        if (!stripe) {
+          return res.status(500).json({ msg: "Stripe is not configured on the server" });
+        }
+
+        try {
+          const existingIntent = await stripe.paymentIntents.retrieve(proposal.paymentIntentId);
+          if (existingIntent && existingIntent.client_secret) {
+            clientSecret = existingIntent.client_secret;
+          }
+        } catch (e) {
+          console.error("Failed to retrieve existing PaymentIntent:", e);
+          return res.status(500).json({ msg: "Failed to retrieve existing payment" });
+        }
+      }
+    } else {
+      proposal.status = status;
+    }
+
     await proposal.save();
 
     res.status(200).json({
       msg: `Proposal ${status} successfully`,
       data: {
-        proposal: proposal
+        proposal,
+        stripe: clientSecret ? { clientSecret } : null,
       },
     });
   } catch (error) {
     console.error("Update Proposal Status Error:", error);
     res.status(500).json({ msg: "Server error while updating proposal" });
+  }
+};
+
+exports.confirmProposalPayment = async (req, res) => {
+  try {
+    const { proposalId } = req.params;
+    const { paymentIntentId } = req.body;
+    const brandId = req.user._id;
+
+    if (!paymentIntentId) {
+      return res.status(400).json({ msg: "paymentIntentId is required" });
+    }
+
+    const proposal = await Proposal.findById(proposalId).populate("campaignId");
+
+    if (!proposal) {
+      return res.status(404).json({ msg: "Proposal not found" });
+    }
+
+    if (proposal.campaignId.brand_id.toString() !== brandId.toString()) {
+      return res.status(403).json({ msg: "You don't have permission to confirm payment for this proposal" });
+    }
+
+    if (proposal.paymentIntentId !== paymentIntentId) {
+      return res.status(400).json({ msg: "Payment intent does not match this proposal" });
+    }
+
+    if (!stripe || !process.env.STRIPE_SECRET_KEY) {
+      return res.status(500).json({ msg: "Stripe is not configured on the server" });
+    }
+
+    const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
+
+    if (!paymentIntent || paymentIntent.status !== "succeeded") {
+      return res.status(400).json({ msg: "Payment has not succeeded" });
+    }
+
+    let tx = null;
+    if (proposal.brandTransactionId) {
+      tx = await Transaction.findById(proposal.brandTransactionId);
+    }
+    if (!tx) {
+      tx = await Transaction.findOne({ proposalId: proposal._id, stripePaymentIntentId: paymentIntentId });
+    }
+
+    if (tx) {
+      tx.status = "approved";
+      if (paymentIntent.charges && paymentIntent.charges.data && paymentIntent.charges.data.length > 0) {
+        tx.stripeChargeId = paymentIntent.charges.data[0].id;
+      }
+      await tx.save();
+    }
+
+    proposal.paymentStatus = "paid";
+    await proposal.save();
+
+    return res.status(200).json({
+      msg: "Payment confirmed and proposal marked as paid",
+      data: {
+        proposal,
+      },
+    });
+  } catch (error) {
+    console.error("Confirm Proposal Payment Error:", error);
+    return res.status(500).json({ msg: "Server error while confirming payment" });
   }
 };
 

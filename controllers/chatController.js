@@ -19,16 +19,17 @@ exports.openChat = async (req, res) => {
         ? campaign.requirements.max_influencers
         : 1) || 1;
 
-    const ensureAcceptedProposal = async (targetInfluencerId) => {
+    const ensurePaidProposal = async (targetInfluencerId) => {
       if (!targetInfluencerId) {
         return false;
       }
-      const accepted = await Proposal.exists({
+      const paid = await Proposal.exists({
         campaignId,
         influencerId: targetInfluencerId,
         status: "accepted",
+        paymentStatus: "paid",
       });
-      return Boolean(accepted);
+      return Boolean(paid);
     };
 
     let otherUserId;
@@ -39,9 +40,9 @@ exports.openChat = async (req, res) => {
     // Single-influencer campaign: strict 1-1 chat using pairKey
     if (maxInfluencers <= 1) {
       if (req.user.role === "influencer") {
-        const accepted = await ensureAcceptedProposal(userId);
-        if (!accepted) {
-          return res.status(403).json({ error: "Chat is available only after your proposal is accepted." });
+        const paid = await ensurePaidProposal(userId);
+        if (!paid) {
+          return res.status(403).json({ error: "Chat is available only after your proposal is accepted and paid." });
         }
 
         if (!campaign.brand_id) {
@@ -53,10 +54,11 @@ exports.openChat = async (req, res) => {
       } else {
         // Brand must specify influencer for 1-1 chat
         if (influencerId) {
-          const accepted = await ensureAcceptedProposal(influencerId);
-          if (!accepted) {
-            return res.status(403).json({ error: "You can only open chats with accepted influencers." });
+          const paid = await ensurePaidProposal(influencerId);
+          if (!paid) {
+            return res.status(403).json({ error: "You can only open chats with influencers whose proposals are accepted and paid." });
           }
+
           otherUserId = influencerId;
           otherUserRole = "influencer";
         } else {
@@ -122,9 +124,9 @@ exports.openChat = async (req, res) => {
         // Add the current user if not already in baseParticipants
         const currentIdStr = String(userId);
         if (req.user.role === "influencer") {
-          const accepted = await ensureAcceptedProposal(userId);
-          if (!accepted) {
-            return res.status(403).json({ error: "Chat is available only after your proposal is accepted." });
+          const paid = await ensurePaidProposal(userId);
+          if (!paid) {
+            return res.status(403).json({ error: "Chat is available only after your proposal is accepted and paid." });
           }
         }
         if (!baseParticipants.some(p => String(p.userId) === currentIdStr)) {
@@ -142,9 +144,9 @@ exports.openChat = async (req, res) => {
         // Make sure the current user is part of the group
         const currentIdStr = String(userId);
         if (req.user.role === "influencer") {
-          const accepted = await ensureAcceptedProposal(userId);
-          if (!accepted) {
-            return res.status(403).json({ error: "Chat is available only after your proposal is accepted." });
+          const paid = await ensurePaidProposal(userId);
+          if (!paid) {
+            return res.status(403).json({ error: "Chat is available only after your proposal is accepted and paid." });
           }
         }
         const alreadyIn = room.participants.some(p => String(p.userId) === currentIdStr);
