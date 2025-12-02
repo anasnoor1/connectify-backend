@@ -4,6 +4,7 @@ const Proposal = require('../model/Proposal');
 const BrandProfile = require('../model/BrandProfile');
 const ChatRoom = require('../model/Chat');
 const Message = require('../model/Message');
+const Transaction = require('../model/Transaction');
 
 const ALLOWED_USER_STATUSES = ['pending_verification', 'active', 'blocked'];
 const ALLOWED_CAMPAIGN_STATUSES = ['pending', 'active', 'completed', 'cancelled'];
@@ -215,6 +216,51 @@ exports.updateCampaignStatus = async (req, res) => {
         .filter(p => p.influencerId && p.influencerMarkedComplete)
         .map(p => p.influencerId.name)
         .filter(Boolean);
+
+      for (const p of completedProposals) {
+        if (!p.influencerId) {
+          continue;
+        }
+        if (!p.brandTransactionId || p.paymentStatus !== 'paid') {
+          continue;
+        }
+        if (p.payoutTransactionId) {
+          continue;
+        }
+
+        const brandTx = await Transaction.findById(p.brandTransactionId);
+        if (!brandTx || brandTx.status !== 'approved') {
+          continue;
+        }
+
+        const totalAmount = typeof brandTx.amount === 'number' ? brandTx.amount : Number(brandTx.amount) || 0;
+        if (!totalAmount || totalAmount <= 0) {
+          continue;
+        }
+
+        const appFee = Number((totalAmount * 0.10).toFixed(2));
+        const influencerAmount = Number((totalAmount - appFee).toFixed(2));
+
+        const influencerUserId = p.influencerId._id || p.influencerId;
+
+        const payoutTx = await Transaction.create({
+          user_id: influencerUserId,
+          amount: influencerAmount,
+          transaction_type: 'credit',
+          status: 'approved',
+          campaignId: id,
+          proposalId: p._id,
+          app_fee: appFee,
+          influencer_amount: influencerAmount,
+          isPayout: true,
+          sourceTransactionId: brandTx._id,
+          currency: brandTx.currency,
+          description: `Payout for campaign ${id} proposal ${p._id}`,
+        });
+
+        p.payoutTransactionId = payoutTx._id;
+        await p.save();
+      }
     }
 
     const updateData = {
