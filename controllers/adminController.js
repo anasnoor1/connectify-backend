@@ -1,6 +1,7 @@
 const User = require('../model/User');
 const Campaign = require('../model/Campaign');
 const Proposal = require('../model/Proposal');
+const BrandProfile = require('../model/BrandProfile');
 const ChatRoom = require('../model/Chat');
 const Message = require('../model/Message');
 
@@ -75,11 +76,71 @@ exports.getCampaigns = async (req, res) => {
       .skip((parsedPage - 1) * parsedLimit)
       .populate('brand_id', 'name email');
 
+    const campaignData = campaigns.map(c => c.toObject());
+
+    const brandIds = [];
+    const campaignIds = [];
+    campaignData.forEach(c => {
+      if (c.brand_id && c.brand_id._id) {
+        brandIds.push(c.brand_id._id.toString());
+      }
+      campaignIds.push(c._id);
+    });
+
+    let brandProfileMap = {};
+    if (brandIds.length > 0) {
+      const profiles = await BrandProfile.find({
+        brand_id: { $in: [...new Set(brandIds)] },
+      }).select('brand_id company_name industry avatar_url');
+
+      brandProfileMap = profiles.reduce((acc, profile) => {
+        if (profile.brand_id) {
+          acc[profile.brand_id.toString()] = {
+            company_name: profile.company_name || null,
+            industry: profile.industry || null,
+            avatar_url: profile.avatar_url || null,
+          };
+        }
+        return acc;
+      }, {});
+    }
+
+    let completedMap = {};
+    if (campaignIds.length > 0) {
+      const completedProposals = await Proposal.find({
+        campaignId: { $in: campaignIds },
+        influencerMarkedComplete: true,
+      }).populate('influencerId', 'name email');
+
+      completedMap = completedProposals.reduce((acc, proposal) => {
+        const cid = proposal.campaignId?.toString();
+        if (!cid) return acc;
+        if (!acc[cid]) acc[cid] = [];
+        acc[cid].push({
+          name: proposal.influencerId?.name || 'Influencer',
+          email: proposal.influencerId?.email || null,
+          influencerId: proposal.influencerId?._id || null,
+          proposalId: proposal._id,
+        });
+        return acc;
+      }, {});
+    }
+
+    campaignData.forEach(c => {
+      if (c.brand_id && c.brand_id._id) {
+        const profile = brandProfileMap[c.brand_id._id.toString()];
+        if (profile) {
+          c.brandProfile = profile;
+        }
+      }
+      c.completedInfluencers = completedMap[c._id.toString()] || [];
+    });
+
     const total = await Campaign.countDocuments(query);
 
     res.json({
       success: true,
-      data: campaigns,
+      data: campaignData,
       meta: {
         total,
         totalPages: Math.ceil(total / parsedLimit),

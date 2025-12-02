@@ -1,3 +1,4 @@
+const mongoose = require("mongoose");
 const Proposal = require("../model/Proposal");
 const Campaign = require("../model/Campaign");
 
@@ -113,29 +114,24 @@ exports.getMyStats = async (req, res) => {
   try {
     const influencerId = req.user._id;
 
-    const agg = await Proposal.aggregate([
-      {
-        $match: {
-          influencerId,
-          adminApprovedCompletion: true,
-        },
-      },
-      {
-        $group: {
-          _id: null,
-          completedCampaigns: { $sum: 1 },
-          totalEarned: { $sum: "$amount" },
-        },
-      },
-    ]);
+    const completedProposals = await Proposal.find({
+      influencerId,
+      adminApprovedCompletion: true,
+    }).select('amount');
 
-    const stats = agg[0] || { completedCampaigns: 0, totalEarned: 0 };
+    const completedCampaigns = completedProposals.length;
+    const totalEarned = completedProposals.reduce((sum, proposal) => {
+      const value = typeof proposal.amount === 'number'
+        ? proposal.amount
+        : Number(proposal.amount) || 0;
+      return sum + value;
+    }, 0);
 
     return res.status(200).json({
       success: true,
       data: {
-        completedCampaigns: stats.completedCampaigns || 0,
-        totalEarned: stats.totalEarned || 0,
+        completedCampaigns,
+        totalEarned,
       },
     });
   } catch (error) {

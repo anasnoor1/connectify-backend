@@ -1,5 +1,6 @@
 const ChatRoom = require("../model/Chat");
 const Campaign = require("../model/Campaign");
+const Proposal = require("../model/Proposal");
 const BrandProfile = require("../model/BrandProfile");
 const InfluencerProfile = require("../model/InfluencerProfile");
 
@@ -7,10 +8,6 @@ exports.openChat = async (req, res) => {
   try {
     const userId = req.user._id; // can be influencer or brand
     const { campaignId, influencerId } = req.body;
-
-    if (!campaignId) {
-      return res.status(400).json({ error: "campaignId is required" });
-    }
 
     console.log(`OpenChat request by ${req.user.role} ${userId} for campaign ${campaignId}`);
 
@@ -22,6 +19,18 @@ exports.openChat = async (req, res) => {
         ? campaign.requirements.max_influencers
         : 1) || 1;
 
+    const ensureAcceptedProposal = async (targetInfluencerId) => {
+      if (!targetInfluencerId) {
+        return false;
+      }
+      const accepted = await Proposal.exists({
+        campaignId,
+        influencerId: targetInfluencerId,
+        status: "accepted",
+      });
+      return Boolean(accepted);
+    };
+
     let otherUserId;
     let otherUserRole;
 
@@ -30,16 +39,24 @@ exports.openChat = async (req, res) => {
     // Single-influencer campaign: strict 1-1 chat using pairKey
     if (maxInfluencers <= 1) {
       if (req.user.role === "influencer") {
+        const accepted = await ensureAcceptedProposal(userId);
+        if (!accepted) {
+          return res.status(403).json({ error: "Chat is available only after your proposal is accepted." });
+        }
+
         if (!campaign.brand_id) {
           console.error("Campaign has no brand_id populated:", campaign);
           return res.status(400).json({ error: "Campaign has no associated brand" });
         }
         otherUserId = campaign.brand_id._id;
-        console.log("campaign.brand_id._id : ", campaign.brand_id._id)
         otherUserRole = "brand";
       } else {
         // Brand must specify influencer for 1-1 chat
         if (influencerId) {
+          const accepted = await ensureAcceptedProposal(influencerId);
+          if (!accepted) {
+            return res.status(403).json({ error: "You can only open chats with accepted influencers." });
+          }
           otherUserId = influencerId;
           otherUserRole = "influencer";
         } else {
@@ -48,17 +65,20 @@ exports.openChat = async (req, res) => {
       }
 
       console.log(`Looking for chat between ${userId} and ${otherUserId}`);
-      const pairKey = [String(userId), String(otherUserId)].sort().join(":");
+      const basePairKey = [String(userId), String(otherUserId)].sort().join(":");
+      const campaignScopedPairKey = `${String(campaignId)}:${basePairKey}`;
 
-      // Prefer pairKey for deterministic uniqueness
-      room = await ChatRoom.findOne({ pairKey });
+      // Prefer campaign-scoped chats; fallback to legacy pairKey rooms that already include this campaign
+      room = await ChatRoom.findOne({ pairKey: campaignScopedPairKey });
+      if (!room) {
+        room = await ChatRoom.findOne({ pairKey: basePairKey, campaignIds: campaignId });
+      }
 
       if (!room) {
         console.log("Creating new 1-1 chat room");
         try {
-          console.log("otherUserId :", otherUserId)
           room = await ChatRoom.create({
-            pairKey,
+            pairKey: campaignScopedPairKey,
             participants: [
               { userId, role: req.user.role },
               { userId: otherUserId, role: otherUserRole }
@@ -68,7 +88,7 @@ exports.openChat = async (req, res) => {
         } catch (createErr) {
           // Handle race: if another request created the room concurrently, fetch it
           if (createErr?.code === 11000) {
-            room = await ChatRoom.findOne({ pairKey });
+            room = await ChatRoom.findOne({ pairKey: campaignScopedPairKey });
           } else {
             throw createErr;
           }
@@ -101,6 +121,12 @@ exports.openChat = async (req, res) => {
 
         // Add the current user if not already in baseParticipants
         const currentIdStr = String(userId);
+        if (req.user.role === "influencer") {
+          const accepted = await ensureAcceptedProposal(userId);
+          if (!accepted) {
+            return res.status(403).json({ error: "Chat is available only after your proposal is accepted." });
+          }
+        }
         if (!baseParticipants.some(p => String(p.userId) === currentIdStr)) {
           baseParticipants.push({ userId, role: req.user.role });
         }
@@ -115,6 +141,12 @@ exports.openChat = async (req, res) => {
       } else {
         // Make sure the current user is part of the group
         const currentIdStr = String(userId);
+        if (req.user.role === "influencer") {
+          const accepted = await ensureAcceptedProposal(userId);
+          if (!accepted) {
+            return res.status(403).json({ error: "Chat is available only after your proposal is accepted." });
+          }
+        }
         const alreadyIn = room.participants.some(p => String(p.userId) === currentIdStr);
         if (!alreadyIn) {
           room.participants.push({ userId, role: req.user.role });
@@ -177,19 +209,8 @@ exports.openChat = async (req, res) => {
       });
     }
 
-    // Determine if this chat should be read-only (any associated campaign completed)
-    try {
-      if (Array.isArray(roomObj.campaignIds) && roomObj.campaignIds.length > 0) {
-        const campaignIds = roomObj.campaignIds.map(c => (c && c._id) ? c._id : c);
-        const campaigns = await Campaign.find({ _id: { $in: campaignIds } }).select('status');
-        roomObj.isReadOnly = campaigns.some(c => c.status === 'completed');
-      } else {
-        roomObj.isReadOnly = false;
-      }
-    } catch (err) {
-      console.error('Failed to determine chat read-only status:', err);
-      roomObj.isReadOnly = false;
-    }
+    // Chats should always remain writable regardless of campaign completion
+    roomObj.isReadOnly = false;
 
     console.log(`Returning room ID: ${room._id}`);
     return res.json({ success: true, room: roomObj });
@@ -321,19 +342,8 @@ exports.getChatRoom = async (req, res) => {
       });
     }
 
-    // Determine if this chat should be read-only (any associated campaign completed)
-    try {
-      if (Array.isArray(roomObj.campaignIds) && roomObj.campaignIds.length > 0) {
-        const campaignIds = roomObj.campaignIds.map(c => (c && c._id) ? c._id : c);
-        const campaigns = await Campaign.find({ _id: { $in: campaignIds } }).select('status');
-        roomObj.isReadOnly = campaigns.some(c => c.status === 'completed');
-      } else {
-        roomObj.isReadOnly = false;
-      }
-    } catch (err) {
-      console.error('Failed to determine chat read-only status in getChatRoom:', err);
-      roomObj.isReadOnly = false;
-    }
+    // Chats should always remain writable regardless of campaign completion
+    roomObj.isReadOnly = false;
 
     console.log(`Room found: ${room._id}`);
     res.json({ success: true, room: roomObj });
