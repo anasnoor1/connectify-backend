@@ -5,8 +5,10 @@ const BrandProfile = require("./model/BrandProfile");
 const InfluencerProfile = require("./model/InfluencerProfile");
 const ChatRoom = require("./model/Chat");
 const Campaign = require("./model/Campaign");
+let ioInstance = null;
 
 module.exports = (io) => {
+  ioInstance = io;
 
   // Socket authentication middleware
   io.use((socket, next) => {
@@ -31,19 +33,6 @@ module.exports = (io) => {
     socket.on("send_message", async (data) => {
       const clean = cleanMessage(data.message);
       if (!clean) return socket.emit("blocked", "Personal info not allowed");
-
-      // Block sending messages if the associated campaign is completed
-      try {
-        const room = await ChatRoom.findById(data.roomId).populate("campaignIds", "status");
-        if (room && room.campaignIds && room.campaignIds.length > 0) {
-          const hasCompletedCampaign = room.campaignIds.some((c) => c && c.status === "completed");
-          if (hasCompletedCampaign) {
-            return socket.emit("blocked", "This campaign is completed. You cannot send new messages in this chat.");
-          }
-        }
-      } catch (err) {
-        console.error("send_message campaign status check failed:", err);
-      }
 
       // Use authenticated user
       const msg = await Message.create({
@@ -72,4 +61,11 @@ module.exports = (io) => {
       io.to(data.roomId).emit("receive_message", payload);
     });
   });
+};
+
+module.exports.getIO = () => {
+  if (!ioInstance) {
+    throw new Error("Socket.io not initialized");
+  }
+  return ioInstance;
 };

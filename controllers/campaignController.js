@@ -2,6 +2,7 @@ const Campaign = require('../model/Campaign');
 const InfluencerProfile = require("../model/InfluencerProfile");
 const BrandProfile = require("../model/BrandProfile");
 const Proposal = require("../model/Proposal");
+const { getIO } = require("../socket");
 
 // Create new campaign
 exports.createCampaign = async (req, res) => {
@@ -67,6 +68,13 @@ exports.createCampaign = async (req, res) => {
     });
 
     await campaign.save();
+
+    try {
+      const io = getIO();
+      io.emit('campaigns_updated');
+    } catch (e) {
+      console.error('Socket emit campaigns_updated failed (create):', e.message || e);
+    }
 
     res.status(201).json({
       success: true,
@@ -294,6 +302,13 @@ exports.updateCampaign = async (req, res) => {
       });
     }
 
+    try {
+      const io = getIO();
+      io.emit('campaigns_updated');
+    } catch (e) {
+      console.error('Socket emit campaigns_updated failed (update):', e.message || e);
+    }
+
     res.json({
       success: true,
       message: 'Campaign updated successfully',
@@ -322,6 +337,13 @@ exports.deleteCampaign = async (req, res) => {
         success: false,
         message: 'Campaign not found'
       });
+    }
+
+    try {
+      const io = getIO();
+      io.emit('campaigns_updated');
+    } catch (e) {
+      console.error('Socket emit campaigns_updated failed (delete):', e.message || e);
     }
 
     res.json({
@@ -412,6 +434,13 @@ exports.markCompletedByInfluencer = async (req, res) => {
       campaign.updated_at = new Date();
 
       await campaign.save();
+    }
+
+    try {
+      const io = getIO();
+      io.emit('campaigns_updated');
+    } catch (e) {
+      console.error('Socket emit campaigns_updated failed (influencer-complete):', e.message || e);
     }
 
     return res.json({

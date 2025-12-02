@@ -677,6 +677,8 @@ exports.getPublicInfluencerCollaborations = async (req, res) => {
       collaborations.push({
         proposal_id: p._id,
         status: p.status,
+        influencerMarkedComplete: !!p.influencerMarkedComplete,
+        adminApprovedCompletion: !!p.adminApprovedCompletion,
         created_at: p.createdAt,
         campaign: {
           id: p.campaignId._id,
@@ -771,6 +773,8 @@ exports.getPublicBrandCollaborations = async (req, res) => {
       collaborations.push({
         proposal_id: p._id,
         status: p.status,
+        influencerMarkedComplete: !!p.influencerMarkedComplete,
+        adminApprovedCompletion: !!p.adminApprovedCompletion,
         created_at: p.createdAt,
         campaign: {
           id: campaign._id,

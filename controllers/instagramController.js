@@ -35,6 +35,14 @@ exports.getInstagramProfile = async (req, res) => {
     if (!username || !String(username).trim()) {
       return res.status(400).json({ message: 'Username is required' });
     }
+    
+    if (!SESSION_ID) {
+      console.error('Instagram integration not configured: INSTAGRAM_SESSION_ID is missing');
+      return res.status(503).json({
+        message: 'Instagram integration is temporarily unavailable',
+        error: 'Instagram access is not configured. Please try again later.'
+      });
+    }
 
     console.log('Fetching Instagram data for:', username);
     
@@ -109,6 +117,13 @@ exports.getInstagramProfile = async (req, res) => {
     if (err.response) {
       console.error('Response status:', err.response.status);
       console.error('Response data:', err.response.data);
+      
+      if (err.response.status === 401) {
+        return res.status(503).json({
+          message: 'Instagram service temporarily unavailable',
+          error: 'Instagram is temporarily blocking requests. Please wait a few minutes and try again.'
+        });
+      }
       
       if (err.response.status === 404) {
         return res.status(404).json({ 
