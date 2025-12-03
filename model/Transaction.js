@@ -14,6 +14,7 @@ const transactionSchema = new mongoose.Schema({
   influencer_amount: { type: Number, default: 0 },
   isPayout: { type: Boolean, default: false },
   sourceTransactionId: { type: mongoose.Schema.Types.ObjectId, ref: "Transaction" },
+  stripeTransferId: { type: String },
   description: { type: String },
   created_at: { type: Date, default: Date.now },
 });
