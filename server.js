@@ -30,9 +30,18 @@ const io = socketIo(server, {
 });
 
 require("./socket")(io);
-
-connectDB();
-ensureAdminUser();
+async function start() {
+  try {
+    await connectDB();
+    await ensureAdminUser();
+    server.listen(Number(PORT), () => {
+      console.log(`Server running on port ${PORT}`);
+    });
+  } catch (e) {
+    console.error('Failed to start server:', e?.message || e);
+    process.exit(1);
+  }
+}
 
 // CORS configuration
 const FRONTEND_ORIGINS = String(
@@ -71,8 +80,5 @@ app.use('/api/payment', paymentRoutes);
 app.use("/api/chat", require("./routes/chatRoutes.js"));
 app.use("/api/message", require("./routes/messageRoute.js"));
 
-
-server.listen(Number(PORT), () => {
-  console.log(`Server running on port ${PORT}`);
-});
+start();
 

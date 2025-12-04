@@ -15,11 +15,32 @@ exports.getStripeStatus = async (req, res) => {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
 
+    let connected = false;
+    let detailsSubmitted = false;
+    let payoutsEnabled = false;
+    let chargesEnabled = false;
+
+    if (stripe && user.stripeAccountId) {
+      try {
+        const account = await stripe.accounts.retrieve(user.stripeAccountId);
+        detailsSubmitted = !!account?.details_submitted;
+        payoutsEnabled = !!account?.payouts_enabled;
+        chargesEnabled = !!account?.charges_enabled;
+        // consider connected when onboarding completed and payouts are enabled (or charges enabled for completeness)
+        connected = detailsSubmitted && (payoutsEnabled || chargesEnabled);
+      } catch (e) {
+        console.warn('Failed to retrieve Stripe account for status', user.stripeAccountId, e.message || e);
+      }
+    }
+
     return res.json({
       success: true,
       data: {
         stripeAccountId: user.stripeAccountId || null,
-        connected: !!user.stripeAccountId,
+        connected,
+        details_submitted: detailsSubmitted,
+        payouts_enabled: payoutsEnabled,
+        charges_enabled: chargesEnabled,
       },
     });
   } catch (err) {
@@ -70,6 +91,7 @@ exports.createStripeConnectLink = async (req, res) => {
           role: user.role,
         },
         capabilities: {
+          card_payments: { requested: true },
           transfers: { requested: true },
         },
       });
@@ -84,8 +106,16 @@ exports.createStripeConnectLink = async (req, res) => {
       account = await stripe.accounts.retrieve(accountId);
     }
 
-    const refreshUrl = process.env.STRIPE_CONNECT_REFRESH_URL || 'http://localhost:5173/influencer/dashboard?connect=refresh';
-    const returnUrl = process.env.STRIPE_CONNECT_RETURN_URL || 'http://localhost:5173/influencer/dashboard?connect=success';
+    // Determine frontend origin from env or request headers to build safe redirect URLs
+    const headerOrigin = req.headers.origin;
+    let headerRefererOrigin = null;
+    try {
+      if (req.headers.referer) headerRefererOrigin = new URL(req.headers.referer).origin;
+    } catch (_) {}
+    const frontendOrigin = process.env.CLIENT_APP_URL || headerOrigin || headerRefererOrigin || 'http://localhost:5173';
+
+    const refreshUrl = process.env.STRIPE_CONNECT_REFRESH_URL || new URL('/influencer/dashboard?connect=refresh', frontendOrigin).toString();
+    const returnUrl = process.env.STRIPE_CONNECT_RETURN_URL || new URL('/influencer/dashboard?connect=success', frontendOrigin).toString();
 
     // If the account is already onboarded, send a login link so they can manage payouts.
     // Otherwise, send an onboarding link so they can complete setup.
@@ -120,5 +150,33 @@ exports.createStripeConnectLink = async (req, res) => {
     }
 
     return res.status(500).json({ success: false, message });
+  }
+};
+
+exports.disconnectStripe = async (req, res) => {
+  try {
+    if (!req.user || req.user.role !== 'influencer') {
+      return res.status(403).json({ success: false, message: 'Only influencers can disconnect Stripe payouts' });
+    }
+
+    const user = await User.findById(req.user._id).select('stripeAccountId');
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    if (!user.stripeAccountId) {
+      return res.status(400).json({ success: false, message: 'Stripe is not currently connected' });
+    }
+
+    user.stripeAccountId = null;
+    await user.save();
+
+    return res.json({
+      success: true,
+      message: 'Stripe has been disconnected for payouts',
+    });
+  } catch (err) {
+    console.error('disconnectStripe error:', err);
+    return res.status(500).json({ success: false, message: 'Failed to disconnect Stripe' });
   }
 };

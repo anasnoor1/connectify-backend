@@ -254,22 +254,41 @@ exports.updateCampaignStatus = async (req, res) => {
             const destinationAccount = influencerUser && influencerUser.stripeAccountId;
 
             if (destinationAccount) {
-              const transfer = await stripe.transfers.create({
-                amount: Math.round(influencerAmount * 100),
-                currency: brandTx.currency || 'usd',
-                destination: destinationAccount,
-                metadata: {
-                  campaignId: String(id),
-                  proposalId: String(p._id),
-                  sourceTransactionId: String(brandTx._id),
-                },
-              });
-              stripeTransferId = transfer.id;
+              let canPayout = true;
+              try {
+                const destAccount = await stripe.accounts.retrieve(destinationAccount);
+                if (!destAccount || destAccount.payouts_enabled !== true) {
+                  canPayout = false;
+                }
+              } catch (e) {
+                console.warn('Destination Stripe account lookup failed for user', String(influencerUserId), e?.raw?.message || e?.message || e);
+                canPayout = false;
+              }
+
+              if (canPayout) {
+                const params = {
+                  amount: Math.round(influencerAmount * 100),
+                  currency: brandTx.currency || 'usd',
+                  destination: destinationAccount,
+                  metadata: {
+                    campaignId: String(id),
+                    proposalId: String(p._id),
+                    sourceTransactionId: String(brandTx._id),
+                  },
+                };
+                if (brandTx.stripeChargeId) {
+                  params.source_transaction = brandTx.stripeChargeId;
+                }
+                const transfer = await stripe.transfers.create(params);
+                stripeTransferId = transfer.id;
+              } else {
+                console.warn('Destination Stripe account is not payout-enabled for user', String(influencerUserId));
+              }
             } else {
               console.warn('Influencer has no stripeAccountId, skipping Stripe transfer for user', String(influencerUserId));
             }
           } catch (e) {
-            console.error('Stripe transfer failed for proposal', String(p._id), e);
+            console.error('Stripe transfer failed for proposal', String(p._id), e?.raw?.message || e);
           }
         }
 
@@ -505,7 +524,18 @@ exports.payoutProposal = async (req, res) => {
           return res.status(400).json({ success: false, message: 'Influencer has no connected Stripe account' });
         }
 
-        const transfer = await stripe.transfers.create({
+        // Ensure the connected account can receive payouts
+        try {
+          const destAccount = await stripe.accounts.retrieve(destinationAccount);
+          if (!destAccount || destAccount.payouts_enabled !== true) {
+            return res.status(400).json({ success: false, message: 'Influencer Stripe account is not payout-enabled yet' });
+          }
+        } catch (e) {
+          console.error('Stripe account retrieve failed for destination', destinationAccount, e?.raw?.message || e?.message || e);
+          return res.status(400).json({ success: false, message: 'Influencer Stripe account is invalid or not accessible' });
+        }
+
+        const params = {
           amount: Math.round(influencerAmount * 100),
           currency: brandTx.currency || 'usd',
           destination: destinationAccount,
@@ -514,11 +544,18 @@ exports.payoutProposal = async (req, res) => {
             proposalId: String(proposal._id),
             sourceTransactionId: String(brandTx._id),
           },
-        });
+        };
+        // Use the original charge as source to avoid requiring platform available balance
+        if (brandTx.stripeChargeId) {
+          params.source_transaction = brandTx.stripeChargeId;
+        }
+
+        const transfer = await stripe.transfers.create(params);
         stripeTransferId = transfer.id;
       } catch (e) {
-        console.error('Stripe transfer failed for manual payout of proposal', String(proposal._id), e);
-        return res.status(500).json({ success: false, message: 'Stripe transfer failed for this proposal' });
+        const msg = e?.raw?.message || 'Stripe transfer failed for this proposal';
+        console.error('Stripe transfer failed for manual payout of proposal', String(proposal._id), msg);
+        return res.status(400).json({ success: false, message: msg });
       }
     }
 
