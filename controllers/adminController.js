@@ -5,6 +5,11 @@ const BrandProfile = require('../model/BrandProfile');
 const ChatRoom = require('../model/Chat');
 const Message = require('../model/Message');
 const Transaction = require('../model/Transaction');
+const Stripe = require('stripe');
+
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
+  apiVersion: '2024-06-20',
+});
 
 const ALLOWED_USER_STATUSES = ['pending_verification', 'active', 'blocked'];
 const ALLOWED_CAMPAIGN_STATUSES = ['pending', 'active', 'completed', 'cancelled'];
@@ -242,6 +247,41 @@ exports.updateCampaignStatus = async (req, res) => {
         const influencerAmount = Number((totalAmount - appFee).toFixed(2));
 
         const influencerUserId = p.influencerId._id || p.influencerId;
+
+        let transferSucceeded = false;
+        try {
+          const influencerUser = await User.findById(influencerUserId);
+          if (!influencerUser || !influencerUser.stripeAccountId) {
+            console.error('Influencer has no Stripe account configured, skipping Stripe transfer for proposal', p._id);
+          } else if (!stripe || !process.env.STRIPE_SECRET_KEY) {
+            console.error('Stripe is not configured on the server, cannot perform payout transfer');
+          } else {
+            const currency = brandTx.currency || (process.env.CURRENCY || 'usd');
+
+            const transferPayload = {
+              amount: Math.round(influencerAmount * 100),
+              currency,
+              destination: influencerUser.stripeAccountId,
+              description: `Payout for campaign ${id} proposal ${p._id}`,
+            };
+
+            if (brandTx.stripeChargeId) {
+              transferPayload.source_transaction = brandTx.stripeChargeId;
+            }
+
+            const transfer = await stripe.transfers.create(transferPayload);
+            if (transfer && transfer.id) {
+              transferSucceeded = true;
+            }
+          }
+        } catch (err) {
+          console.error('Stripe payout transfer failed for proposal', p._id, err);
+          transferSucceeded = false;
+        }
+
+        if (!transferSucceeded) {
+          continue;
+        }
 
         const payoutTx = await Transaction.create({
           user_id: influencerUserId,

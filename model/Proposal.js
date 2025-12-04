@@ -31,7 +31,7 @@ const proposalSchema = new mongoose.Schema(
     },
     paymentStatus: {
       type: String,
-      enum: ["unpaid", "pending", "paid", "failed"],
+      enum: ["unpaid", "pending", "paid", "released"],
       default: "unpaid",
     },
     paymentIntentId: {
@@ -58,14 +58,6 @@ const proposalSchema = new mongoose.Schema(
     },
     adminCompletionApprovedAt: {
       type: Date,
-    },
-    paymentStatus: {
-      type: String,
-      enum: ["unpaid", "paid", "released"],
-      default: "unpaid",
-    },
-    paymentIntentId: {
-      type: String,
     },
     brandPaidAmount: {
       type: Number,

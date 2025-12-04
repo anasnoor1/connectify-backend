@@ -21,6 +21,7 @@ const userSchema = new mongoose.Schema({
     expire:{type: Number},
     issueTime:{type: Number},
   },
+  stripeAccountId: { type: String, default: null },
 
   created_at: { type: Date, default: Date.now },
 
