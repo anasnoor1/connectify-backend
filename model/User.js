@@ -22,6 +22,8 @@ const userSchema = new mongoose.Schema({
     issueTime:{type: Number},
   },
 
+  stripeAccountId: { type: String, required: false },
+
   created_at: { type: Date, default: Date.now },
 
 });
