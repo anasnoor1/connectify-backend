@@ -6,6 +6,7 @@ const ChatRoom = require('../model/Chat');
 const Message = require('../model/Message');
 const Transaction = require('../model/Transaction');
 const Stripe = require('stripe');
+const nodemailer = require('nodemailer');
 const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
 const stripe = stripeSecretKey ? Stripe(stripeSecretKey) : null;
 
@@ -363,6 +364,41 @@ exports.updateCampaignStatus = async (req, res) => {
       } catch (err) {
         // Log but do not fail the API if chat notification fails
         console.error('Failed to send campaign completion message to chats:', err);
+      }
+    }
+
+    if (status === 'completed' && existingCampaign.status !== 'completed') {
+      try {
+        const brandUser = await User.findById(existingCampaign.brand_id).select('email name');
+
+        if (brandUser && brandUser.email) {
+          const transporter = nodemailer.createTransport({
+            service: 'gmail',
+            auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
+          });
+
+          const influencerList =
+            influencerNamesForMessage && influencerNamesForMessage.length > 0
+              ? influencerNamesForMessage.join(', ')
+              : 'your selected influencers';
+
+          await transporter.sendMail({
+            from: `"Connectify Team" <${process.env.EMAIL_USER}>`,
+            to: brandUser.email,
+            subject: 'Your campaign has been completed',
+            html: `
+              <div style="font-family: Arial, sans-serif; padding: 20px;">
+                <h2 style="margin-bottom: 12px;">Campaign Completed</h2>
+                <p>Hi ${brandUser.name || 'there'},</p>
+                <p>Your campaign "<strong>${campaign.title}</strong>" has been marked as <strong>completed</strong> by our admin.</p>
+                <p>Influencers who completed this campaign: ${influencerList}.</p>
+                <p>Thank you for running your campaign with Connectify.</p>
+              </div>
+            `,
+          });
+        }
+      } catch (err) {
+        console.error('Failed to send campaign completion email to brand:', err);
       }
     }
 
