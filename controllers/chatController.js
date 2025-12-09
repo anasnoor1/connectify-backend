@@ -70,17 +70,29 @@ exports.openChat = async (req, res) => {
       const basePairKey = [String(userId), String(otherUserId)].sort().join(":");
       const campaignScopedPairKey = `${String(campaignId)}:${basePairKey}`;
 
-      // Prefer campaign-scoped chats; fallback to legacy pairKey rooms that already include this campaign
-      room = await ChatRoom.findOne({ pairKey: campaignScopedPairKey });
+      // Prefer user-level chat (no per-campaign duplicates). Reuse legacy campaign-scoped if it exists.
+      room = await ChatRoom.findOne({ pairKey: basePairKey });
       if (!room) {
-        room = await ChatRoom.findOne({ pairKey: basePairKey, campaignIds: campaignId });
+        room = await ChatRoom.findOne({ pairKey: campaignScopedPairKey });
+        if (room && room.pairKey !== basePairKey) {
+          room.pairKey = basePairKey;
+          try {
+            await room.save();
+          } catch (saveErr) {
+            if (saveErr?.code === 11000) {
+              room = await ChatRoom.findOne({ pairKey: basePairKey });
+            } else {
+              throw saveErr;
+            }
+          }
+        }
       }
 
       if (!room) {
         console.log("Creating new 1-1 chat room");
         try {
           room = await ChatRoom.create({
-            pairKey: campaignScopedPairKey,
+            pairKey: basePairKey,
             participants: [
               { userId, role: req.user.role },
               { userId: otherUserId, role: otherUserRole }
@@ -90,14 +102,17 @@ exports.openChat = async (req, res) => {
         } catch (createErr) {
           // Handle race: if another request created the room concurrently, fetch it
           if (createErr?.code === 11000) {
-            room = await ChatRoom.findOne({ pairKey: campaignScopedPairKey });
+            room = await ChatRoom.findOne({ pairKey: basePairKey });
           } else {
             throw createErr;
           }
         }
       } else {
         console.log("Found existing 1-1 chat room", room._id);
-        if (!room.campaignIds.includes(campaignId)) {
+        const hasCampaign = Array.isArray(room.campaignIds)
+          ? room.campaignIds.some((cid) => String(cid) === String(campaignId))
+          : false;
+        if (!hasCampaign) {
           room.campaignIds.push(campaignId);
           await room.save();
         }
