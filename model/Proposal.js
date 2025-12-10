@@ -24,6 +24,12 @@ const proposalSchema = new mongoose.Schema(
       type: String,
       required: true,
     },
+    acceptedAt: {
+      type: Date,
+    },
+    deadline: {
+      type: Date,
+    },
     status: {
       type: String,
       enum: ["pending", "accepted", "rejected"],

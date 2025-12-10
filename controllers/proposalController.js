@@ -233,6 +233,19 @@ exports.updateProposalStatus = async (req, res) => {
     if (status === "accepted") {
       proposal.status = "accepted";
 
+      // Set acceptance timestamp and compute deadline based on deliveryTime
+      const now = new Date();
+      if (!proposal.acceptedAt) {
+        proposal.acceptedAt = now;
+      }
+      const deliveryDays = parseDeliveryTimeToDays(proposal.deliveryTime || "");
+      if (deliveryDays === null) {
+        return res.status(400).json({ msg: "Invalid delivery time on proposal. Cannot calculate deadline." });
+      }
+      if (!proposal.deadline) {
+        proposal.deadline = new Date(proposal.acceptedAt.getTime() + deliveryDays * 24 * 60 * 60 * 1000);
+      }
+
       if (!proposal.paymentIntentId) {
         const amountNumber = typeof proposal.amount === "number" ? proposal.amount : Number(proposal.amount) || 0;
         if (!amountNumber || amountNumber <= 0) {
