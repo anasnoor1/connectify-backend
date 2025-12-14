@@ -23,6 +23,7 @@ const proposalRoutes = require("./routes/proposals");
 const reviewRoutes = require('./routes/review');
 const paymentRoutes = require('./routes/payment');
 const homeRoutes = require('./routes/home');
+const disputeRoutes = require('./routes/dispute');
 
 const io = socketIo(server, {
   cors: { 
@@ -78,6 +79,7 @@ app.use("/api/proposals", proposalRoutes);
 app.use('/api/reviews', reviewRoutes);
 app.use('/api/payment', paymentRoutes);
 app.use('/api/home', homeRoutes);
+app.use('/api/disputes', disputeRoutes);
 
 app.use("/api/chat", require("./routes/chatRoutes.js"));
 app.use("/api/message", require("./routes/messageRoute.js"));

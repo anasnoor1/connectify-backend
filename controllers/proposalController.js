@@ -40,8 +40,8 @@ exports.createProposal = async (req, res) => {
     }
 
     // Do not allow proposals on completed or cancelled campaigns
-    if (campaign.status === 'completed' || campaign.status === 'cancelled') {
-      return res.status(400).json({ msg: "Cannot send proposals to a completed or cancelled campaign" });
+    if (campaign.status === 'completed' || campaign.status === 'cancelled' || campaign.status === 'disputed') {
+      return res.status(400).json({ msg: "Cannot send proposals to a completed, cancelled, or disputed campaign" });
     }
 
     // Validate proposed amount is within campaign budget range

@@ -5,6 +5,7 @@ const BrandProfile = require('../model/BrandProfile');
 const ChatRoom = require('../model/Chat');
 const Message = require('../model/Message');
 const Transaction = require('../model/Transaction');
+const Dispute = require('../model/Dispute');
 const Stripe = require('stripe');
 const nodemailer = require('nodemailer');
 const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
@@ -12,6 +13,13 @@ const stripe = stripeSecretKey ? Stripe(stripeSecretKey) : null;
 
 const ALLOWED_USER_STATUSES = ['pending_verification', 'active', 'blocked'];
 const ALLOWED_CAMPAIGN_STATUSES = ['pending', 'active', 'completed', 'cancelled'];
+const OPEN_DISPUTE_STATUSES = ['pending', 'needs_info', 'escalated'];
+
+async function hasOpenDispute(campaignId) {
+  if (!campaignId) return false;
+  const exists = await Dispute.exists({ campaignId, status: { $in: OPEN_DISPUTE_STATUSES } });
+  return !!exists;
+}
 
 exports.getAllUsers = async (req, res) => {
   try {
@@ -173,6 +181,14 @@ exports.updateCampaignStatus = async (req, res) => {
 
     if (!existingCampaign) {
       return res.status(404).json({ success: false, message: 'Campaign not found' });
+    }
+
+    // Prevent completion while a dispute is open for this campaign
+    if (status === 'completed') {
+      const open = await hasOpenDispute(existingCampaign._id);
+      if (open) {
+        return res.status(400).json({ success: false, message: 'Cannot mark campaign as completed while a dispute is open' });
+      }
     }
 
     // When marking as completed, ensure the planned number of influencers
@@ -513,6 +529,11 @@ exports.payoutProposal = async (req, res) => {
 
     if (!proposal) {
       return res.status(404).json({ success: false, message: 'Proposal not found' });
+    }
+
+    const hasDispute = await hasOpenDispute(proposal.campaignId);
+    if (hasDispute) {
+      return res.status(400).json({ success: false, message: 'Payout is blocked because this campaign has an open dispute' });
     }
 
     if (!proposal.brandTransactionId || proposal.paymentStatus !== 'paid') {

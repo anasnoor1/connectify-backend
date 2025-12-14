@@ -249,10 +249,25 @@ exports.getCampaign = async (req, res) => {
   }
 };
 
-// Update campaign
+// Update campaign (brand only, locked after completion/cancel/dispute)
 exports.updateCampaign = async (req, res) => {
   try {
     const { id } = req.params;
+
+    // Load existing to enforce edit lock
+    const existing = await Campaign.findOne({ _id: id, brand_id: req.user._id });
+    if (!existing) {
+      return res.status(404).json({
+        success: false,
+        message: 'Campaign not found'
+      });
+    }
+    if (['completed', 'cancelled', 'disputed'].includes(existing.status)) {
+      return res.status(400).json({
+        success: false,
+        message: 'This campaign can no longer be edited because it is closed'
+      });
+    }
 
     // Validate Budget Range if provided
     if (req.body.budgetMin !== undefined || req.body.budgetMax !== undefined) {
@@ -270,9 +285,7 @@ exports.updateCampaign = async (req, res) => {
       }
     }
 
-    // When a brand edits a campaign, always send it back to pending
-    // so that admin can review and re-approve. Ignore any incoming
-    // status field from the request body.
+    // When a brand edits a campaign, always send it back to pending for admin review
     const updateData = {
       ...req.body,
       status: 'pending',
@@ -295,26 +308,11 @@ exports.updateCampaign = async (req, res) => {
       { new: true, runValidators: true }
     );
 
-    if (!campaign) {
-      return res.status(404).json({
-        success: false,
-        message: 'Campaign not found'
-      });
-    }
-
-    try {
-      const io = getIO();
-      io.emit('campaigns_updated');
-    } catch (e) {
-      console.error('Socket emit campaigns_updated failed (update):', e.message || e);
-    }
-
     res.json({
       success: true,
       message: 'Campaign updated successfully',
       data: campaign
     });
-
   } catch (err) {
     console.error('Update campaign error:', err);
     res.status(500).json({
