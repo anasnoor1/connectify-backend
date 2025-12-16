@@ -25,7 +25,7 @@ exports.getLandingHighlights = async (req, res) => {
         },
       },
       { $sort: { hires: -1, lastHire: -1 } },
-      { $limit: 6 },
+      { $limit: 3 },
       {
         $lookup: {
           from: "users",
@@ -74,7 +74,7 @@ exports.getLandingHighlights = async (req, res) => {
         },
       },
       { $sort: { hires: -1, lastHire: -1 } },
-      { $limit: 6 },
+      { $limit: 3 },
       {
         $lookup: {
           from: "users",

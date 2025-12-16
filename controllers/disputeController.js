@@ -233,6 +233,11 @@ exports.adminDecision = async (req, res) => {
     const { id } = req.params;
     const { decision, notes, amount } = req.body;
 
+    // Require amount for refund_partial and release_funds
+    if ((decision === "refund_partial" || decision === "release_funds") && (!amount || Number(amount) <= 0)) {
+      return res.status(400).json({ success: false, message: "Amount is required and must be greater than 0 for this decision" });
+    }
+
     const dispute = await Dispute.findById(id).populate("campaignId");
     if (!dispute) return res.status(404).json({ success: false, message: "Dispute not found" });
 
@@ -249,9 +254,35 @@ exports.adminDecision = async (req, res) => {
     if (dispute.campaignId) {
       if (decision === "refund_full" || decision === "refund_partial" || decision === "reject") {
         dispute.campaignId.status = "cancelled";
+      } else if (decision === "redo_work") {
+        // Send campaign back to active so influencer can redo and mark complete again
+        dispute.campaignId.status = "active";
+        dispute.campaignId.reviewEnabled = false;
+        dispute.campaignId.influencerCompleted = false;
+        dispute.campaignId.influencerCompletedAt = null;
+
+        // Reset completion flags on proposals for this campaign so the influencer can re-complete
+        // Note: brand ids will not match influencerId, so this remains safe.
+        const potentialInfluencerIds = [dispute.raisedBy, dispute.against].filter(Boolean);
+        await Proposal.updateMany(
+          {
+            campaignId: dispute.campaignId._id,
+            influencerId: { $in: potentialInfluencerIds },
+          },
+          {
+            $set: {
+              influencerMarkedComplete: false,
+              influencerCompletedAt: null,
+              adminApprovedCompletion: false,
+              adminCompletionApprovedAt: null,
+            },
+          }
+        );
       } else {
         dispute.campaignId.status = "completed";
       }
+
+      dispute.campaignId.updated_at = new Date();
       await dispute.campaignId.save();
     }
 
