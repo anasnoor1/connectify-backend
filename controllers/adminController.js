@@ -122,6 +122,7 @@ exports.getCampaigns = async (req, res) => {
     if (campaignIds.length > 0) {
       const completedProposals = await Proposal.find({
         campaignId: { $in: campaignIds },
+        status: 'accepted',
         influencerMarkedComplete: true,
       }).populate('influencerId', 'name email');
 
@@ -200,6 +201,7 @@ exports.updateCampaignStatus = async (req, res) => {
 
       const completedProposals = await Proposal.find({
         campaignId: id,
+        status: 'accepted',
         influencerMarkedComplete: true,
       }).populate('influencerId', 'name');
 
@@ -222,6 +224,7 @@ exports.updateCampaignStatus = async (req, res) => {
       await Proposal.updateMany(
         {
           campaignId: id,
+          status: 'accepted',
           influencerMarkedComplete: true,
         },
         {
@@ -236,98 +239,6 @@ exports.updateCampaignStatus = async (req, res) => {
         .filter(p => p.influencerId && p.influencerMarkedComplete)
         .map(p => p.influencerId.name)
         .filter(Boolean);
-
-      for (const p of completedProposals) {
-        if (!p.influencerId) {
-          continue;
-        }
-        if (!p.brandTransactionId || p.paymentStatus !== 'paid') {
-          continue;
-        }
-        if (p.payoutTransactionId) {
-          continue;
-        }
-
-        const brandTx = await Transaction.findById(p.brandTransactionId);
-        if (!brandTx || brandTx.status !== 'approved') {
-          continue;
-        }
-
-        const totalAmount = typeof brandTx.amount === 'number' ? brandTx.amount : Number(brandTx.amount) || 0;
-        if (!totalAmount || totalAmount <= 0) {
-          continue;
-        }
-
-        const appFee = Number((totalAmount * 0.10).toFixed(2));
-        const influencerAmount = Number((totalAmount - appFee).toFixed(2));
-
-        const influencerUserId = p.influencerId._id || p.influencerId;
-
-        let stripeTransferId = null;
-
-        if (stripe) {
-          try {
-            const influencerUser = await User.findById(influencerUserId).select('stripeAccountId');
-            const destinationAccount = influencerUser && influencerUser.stripeAccountId;
-
-            if (destinationAccount) {
-              let canPayout = true;
-              try {
-                const destAccount = await stripe.accounts.retrieve(destinationAccount);
-                if (!destAccount || destAccount.payouts_enabled !== true) {
-                  canPayout = false;
-                }
-              } catch (e) {
-                console.warn('Destination Stripe account lookup failed for user', String(influencerUserId), e?.raw?.message || e?.message || e);
-                canPayout = false;
-              }
-
-              if (canPayout) {
-                const params = {
-                  amount: Math.round(influencerAmount * 100),
-                  currency: brandTx.currency || 'usd',
-                  destination: destinationAccount,
-                  metadata: {
-                    campaignId: String(id),
-                    proposalId: String(p._id),
-                    sourceTransactionId: String(brandTx._id),
-                  },
-                };
-                if (brandTx.stripeChargeId) {
-                  params.source_transaction = brandTx.stripeChargeId;
-                }
-                const transfer = await stripe.transfers.create(params);
-                stripeTransferId = transfer.id;
-              } else {
-                console.warn('Destination Stripe account is not payout-enabled for user', String(influencerUserId));
-              }
-            } else {
-              console.warn('Influencer has no stripeAccountId, skipping Stripe transfer for user', String(influencerUserId));
-            }
-          } catch (e) {
-            console.error('Stripe transfer failed for proposal', String(p._id), e?.raw?.message || e);
-          }
-        }
-
-        const payoutTx = await Transaction.create({
-          user_id: influencerUserId,
-          amount: influencerAmount,
-          transaction_type: 'credit',
-          status: stripeTransferId ? 'approved' : 'pending',
-          campaignId: id,
-          proposalId: p._id,
-          app_fee: appFee,
-          influencer_amount: influencerAmount,
-          isPayout: true,
-          sourceTransactionId: brandTx._id,
-          currency: brandTx.currency,
-          stripeTransferId,
-          description: `Payout for campaign ${id} proposal ${p._id}`,
-        });
-
-        p.payoutTransactionId = payoutTx._id;
-        await p.save();
-      }
     }
 
     const updateData = {
@@ -475,7 +386,13 @@ exports.getTransactions = async (req, res) => {
       let derivedStatus = 'pending';
 
       if (tx.status === 'approved') {
-        derivedStatus = 'ready_for_payout';
+        derivedStatus = 'approved';
+
+        // Only show ready_for_payout after admin approved completion for the proposal
+        if (proposal && proposal.adminApprovedCompletion) {
+          derivedStatus = 'ready_for_payout';
+        }
+
         if (payoutTx && payoutTx.status === 'approved' && payoutTx.stripeTransferId) {
           derivedStatus = 'paid';
         }
@@ -529,6 +446,20 @@ exports.payoutProposal = async (req, res) => {
 
     if (!proposal) {
       return res.status(404).json({ success: false, message: 'Proposal not found' });
+    }
+
+    if (!proposal.influencerMarkedComplete) {
+      return res.status(400).json({
+        success: false,
+        message: 'Influencer has not marked this proposal as completed yet',
+      });
+    }
+
+    if (!proposal.adminApprovedCompletion) {
+      return res.status(400).json({
+        success: false,
+        message: 'Admin must approve completion before processing payout',
+      });
     }
 
     const hasDispute = await hasOpenDispute(proposal.campaignId);

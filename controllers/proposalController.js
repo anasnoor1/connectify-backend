@@ -44,6 +44,22 @@ exports.createProposal = async (req, res) => {
       return res.status(400).json({ msg: "Cannot send proposals to a completed, cancelled, or disputed campaign" });
     }
 
+    const maxInfluencers =
+      (campaign.requirements && typeof campaign.requirements.max_influencers === 'number'
+        ? campaign.requirements.max_influencers
+        : 1) || 1;
+
+    const acceptedCount = await Proposal.countDocuments({
+      campaignId,
+      status: 'accepted',
+    });
+
+    if (acceptedCount >= maxInfluencers) {
+      return res.status(400).json({
+        msg: 'This campaign is no longer accepting proposals',
+      });
+    }
+
     // Validate proposed amount is within campaign budget range
     const proposedAmount = Number(amount);
     if (isNaN(proposedAmount) || proposedAmount <= 0) {
@@ -228,9 +244,36 @@ exports.updateProposalStatus = async (req, res) => {
       return res.status(403).json({ msg: "You don't have permission to update this proposal" });
     }
 
+    if (
+      proposal.campaignId.status === 'completed' ||
+      proposal.campaignId.status === 'cancelled' ||
+      proposal.campaignId.status === 'disputed'
+    ) {
+      return res.status(400).json({
+        msg: 'Cannot update proposals for a completed, cancelled, or disputed campaign',
+      });
+    }
+
     let clientSecret = null;
 
     if (status === "accepted") {
+      const maxInfluencers =
+        (proposal.campaignId.requirements &&
+        typeof proposal.campaignId.requirements.max_influencers === 'number'
+          ? proposal.campaignId.requirements.max_influencers
+          : 1) || 1;
+
+      const acceptedCount = await Proposal.countDocuments({
+        campaignId: proposal.campaignId._id,
+        status: 'accepted',
+      });
+
+      if (proposal.status !== 'accepted' && acceptedCount >= maxInfluencers) {
+        return res.status(400).json({
+          msg: 'Cannot accept proposal because this campaign has already reached the maximum number of influencers',
+        });
+      }
+
       proposal.status = "accepted";
 
       // Set acceptance timestamp and compute deadline based on deliveryTime

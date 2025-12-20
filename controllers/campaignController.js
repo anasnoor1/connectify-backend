@@ -54,6 +54,16 @@ exports.createCampaign = async (req, res) => {
       }
     }
 
+    if (requirements && requirements.max_influencers !== undefined && requirements.max_influencers !== null) {
+      const maxInfluencers = Number(requirements.max_influencers);
+      if (!Number.isInteger(maxInfluencers) || maxInfluencers < 1 || maxInfluencers > 3) {
+        return res.status(400).json({
+          success: false,
+          message: 'Number of influencers must be a whole number between 1 and 3'
+        });
+      }
+    }
+
     const campaign = new Campaign({
       brand_id: brandId,
       title,
@@ -137,6 +147,32 @@ exports.getBrandCampaigns = async (req, res) => {
     // Convert to plain objects to allow adding properties
     let campaignsData = campaigns.map(c => c.toObject());
 
+    const acceptedCountMap = {};
+    if (campaignsData.length > 0) {
+      const allCampaignIds = campaignsData.map(c => c._id);
+      const acceptedCounts = await Proposal.aggregate([
+        { $match: { campaignId: { $in: allCampaignIds }, status: 'accepted' } },
+        { $group: { _id: '$campaignId', count: { $sum: 1 } } },
+      ]);
+
+      acceptedCounts.forEach(row => {
+        if (row && row._id) {
+          acceptedCountMap[row._id.toString()] = row.count || 0;
+        }
+      });
+
+      campaignsData.forEach(c => {
+        const maxInfluencers =
+          (c.requirements && typeof c.requirements.max_influencers === 'number'
+            ? c.requirements.max_influencers
+            : 1) || 1;
+
+        const acceptedCount = acceptedCountMap[c._id.toString()] || 0;
+        c.acceptedCount = acceptedCount;
+        c.isFull = acceptedCount >= maxInfluencers;
+      });
+    }
+
     // For influencer views, enrich campaigns with brand avatar_url and proposal status
     if (role === 'influencer' && campaignsData.length > 0) {
       const brandIds = [];
@@ -219,7 +255,6 @@ exports.getBrandCampaigns = async (req, res) => {
   }
 };
 
-// Get single campaign
 exports.getCampaign = async (req, res) => {
   try {
     const campaign = await Campaign.findOne({
@@ -235,9 +270,23 @@ exports.getCampaign = async (req, res) => {
       });
     }
 
+    const maxInfluencers =
+      (campaign.requirements && typeof campaign.requirements.max_influencers === 'number'
+        ? campaign.requirements.max_influencers
+        : 1) || 1;
+
+    const acceptedCount = await Proposal.countDocuments({
+      campaignId: campaign._id,
+      status: 'accepted',
+    });
+
     res.json({
       success: true,
-      data: campaign
+      data: {
+        ...campaign.toObject(),
+        acceptedCount,
+        isFull: acceptedCount >= maxInfluencers,
+      }
     });
 
   } catch (err) {
@@ -266,6 +315,23 @@ exports.updateCampaign = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: 'This campaign can no longer be edited because it is closed'
+      });
+    }
+
+    const maxInfluencers =
+      (existing.requirements && typeof existing.requirements.max_influencers === 'number'
+        ? existing.requirements.max_influencers
+        : 1) || 1;
+
+    const acceptedCount = await Proposal.countDocuments({
+      campaignId: existing._id,
+      status: 'accepted',
+    });
+
+    if (acceptedCount >= maxInfluencers) {
+      return res.status(400).json({
+        success: false,
+        message: 'This campaign can no longer be edited because it has reached the maximum number of influencers'
       });
     }
 
@@ -298,6 +364,16 @@ exports.updateCampaign = async (req, res) => {
         return res.status(400).json({
           success: false,
           message: 'Minimum followers requirement must be at least 1000'
+        });
+      }
+    }
+
+    if (updateData.requirements && updateData.requirements.max_influencers !== undefined && updateData.requirements.max_influencers !== null) {
+      const maxInfluencers = Number(updateData.requirements.max_influencers);
+      if (!Number.isInteger(maxInfluencers) || maxInfluencers < 1 || maxInfluencers > 3) {
+        return res.status(400).json({
+          success: false,
+          message: 'Number of influencers must be a whole number between 1 and 3'
         });
       }
     }
@@ -392,12 +468,13 @@ exports.markCompletedByInfluencer = async (req, res) => {
     const proposal = await Proposal.findOne({
       campaignId: id,
       influencerId: userId,
+      status: 'accepted',
     });
 
     if (!proposal) {
       return res.status(400).json({
         success: false,
-        message: 'You must have a proposal on this campaign before marking it as completed',
+        message: 'You must have an accepted proposal on this campaign before marking it as completed',
       });
     }
 
@@ -418,6 +495,7 @@ exports.markCompletedByInfluencer = async (req, res) => {
     // have all marked completion.
     const completedCount = await Proposal.countDocuments({
       campaignId: id,
+      status: 'accepted',
       influencerMarkedComplete: true,
     });
 
@@ -476,10 +554,12 @@ exports.getSuggestedCampaigns = async (req, res) => {
       status: "active"
     }).populate("brand_id", "name email");
 
-    if (suggestions && suggestions.length > 0) {
+    let suggestionsData = suggestions.map(c => c.toObject());
+
+    if (suggestionsData && suggestionsData.length > 0) {
       const brandIds = [
         ...new Set(
-          suggestions
+          suggestionsData
             .map(c => {
               if (!c.brand_id) return null;
               return c.brand_id._id ? c.brand_id._id.toString() : c.brand_id.toString();
@@ -500,7 +580,7 @@ exports.getSuggestedCampaigns = async (req, res) => {
           }
         }
 
-        suggestions.forEach(c => {
+        suggestionsData.forEach(c => {
           if (!c.brand_id) return;
           const key = c.brand_id._id ? c.brand_id._id.toString() : c.brand_id.toString();
           if (key && profileMap[key] !== undefined) {
@@ -510,9 +590,34 @@ exports.getSuggestedCampaigns = async (req, res) => {
       }
     }
 
+    const acceptedCountMap = {};
+    if (suggestionsData.length > 0) {
+      const suggestionIds = suggestionsData.map(c => c._id);
+      const acceptedCounts = await Proposal.aggregate([
+        { $match: { campaignId: { $in: suggestionIds }, status: 'accepted' } },
+        { $group: { _id: '$campaignId', count: { $sum: 1 } } },
+      ]);
+
+      acceptedCounts.forEach(row => {
+        if (row && row._id) {
+          acceptedCountMap[row._id.toString()] = row.count || 0;
+        }
+      });
+
+      suggestionsData.forEach(c => {
+        const maxInfluencers =
+          (c.requirements && typeof c.requirements.max_influencers === 'number'
+            ? c.requirements.max_influencers
+            : 1) || 1;
+        const acceptedCount = acceptedCountMap[c._id.toString()] || 0;
+        c.acceptedCount = acceptedCount;
+        c.isFull = acceptedCount >= maxInfluencers;
+      });
+    }
+
     return res.status(200).json({
       success: true,
-      suggestions
+      suggestions: suggestionsData
     });
 
   } catch (error) {

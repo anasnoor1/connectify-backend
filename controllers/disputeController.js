@@ -241,6 +241,15 @@ exports.adminDecision = async (req, res) => {
     const dispute = await Dispute.findById(id).populate("campaignId");
     if (!dispute) return res.status(404).json({ success: false, message: "Dispute not found" });
 
+    // Once a decision is made, it is final and cannot be changed
+    if (
+      (dispute.status === "resolved" || dispute.status === "rejected") &&
+      dispute.resolution &&
+      dispute.resolution.decision
+    ) {
+      return res.status(400).json({ success: false, message: "Admin decision is final and cannot be changed" });
+    }
+
     dispute.status = decision === "reject" ? "rejected" : "resolved";
     dispute.resolution = {
       decisionBy: req.user._id,
