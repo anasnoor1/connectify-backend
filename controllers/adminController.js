@@ -414,11 +414,14 @@ exports.getTransactions = async (req, res) => {
         appFee: typeof tx.app_fee === 'number' ? tx.app_fee : 0,
         influencerAmount:
           typeof tx.influencer_amount === 'number' ? tx.influencer_amount : 0,
+        method: tx.method || 'stripe',
+        transactionId: tx.transactionId || tx.stripePaymentIntentId || null,
         stripePaymentIntentId: tx.stripePaymentIntentId,
         stripeTransferId: payoutTx && payoutTx.stripeTransferId,
         proposalPaymentStatus: proposal && proposal.paymentStatus,
         adminApprovedCompletion: !!(proposal && proposal.adminApprovedCompletion),
         status: derivedStatus,
+        createdAt: tx.created_at,
       };
     });
 

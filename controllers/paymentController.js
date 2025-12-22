@@ -1,5 +1,7 @@
 const Stripe = require('stripe');
 const User = require('../model/User');
+const Transaction = require('../model/Transaction');
+const Proposal = require('../model/Proposal');
 
 const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
 const stripe = stripeSecretKey ? Stripe(stripeSecretKey) : null;
@@ -46,6 +48,92 @@ exports.getStripeStatus = async (req, res) => {
   } catch (err) {
     console.error('getStripeStatus error:', err);
     return res.status(500).json({ success: false, message: 'Failed to fetch Stripe status' });
+  }
+};
+
+exports.createPakPayment = async (req, res) => {
+  try {
+    const { proposalId, method } = req.body || {};
+
+    if (!proposalId || !method) {
+      return res.status(400).json({ success: false, message: 'proposalId and method are required' });
+    }
+
+    const normalized = String(method).toLowerCase();
+    if (!['easypaisa', 'jazzcash'].includes(normalized)) {
+      return res.status(400).json({ success: false, message: 'Unsupported method. Use easypaisa or jazzcash' });
+    }
+
+    const proposal = await Proposal.findById(proposalId).populate('campaignId');
+    if (!proposal) {
+      return res.status(404).json({ success: false, message: 'Proposal not found' });
+    }
+
+    const brandId = proposal.campaignId?.brand_id?.toString();
+    if (!req.user || !brandId || String(req.user._id) !== brandId) {
+      return res.status(403).json({ success: false, message: "You don't have permission to pay for this proposal" });
+    }
+
+    if (proposal.campaignId.status === 'completed' || proposal.campaignId.status === 'cancelled' || proposal.campaignId.status === 'disputed') {
+      return res.status(400).json({ success: false, message: 'Cannot pay for a completed, cancelled, or disputed campaign' });
+    }
+
+    // Simulate gateway redirect/processing delay (2-3 seconds)
+    const delayMs = 1800 + Math.floor(Math.random() * 700);
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
+
+    const amountNumber = typeof proposal.amount === 'number' ? proposal.amount : Number(proposal.amount) || 0;
+    if (!amountNumber || amountNumber <= 0) {
+      return res.status(400).json({ success: false, message: 'Invalid proposal amount' });
+    }
+
+    // Randomize outcome for demo (85% success)
+    const succeeded = Math.random() < 0.85;
+
+    const appFeePercent = 0.10;
+    const appFee = Number((amountNumber * appFeePercent).toFixed(2));
+    const influencerAmount = Number((amountNumber - appFee).toFixed(2));
+
+    const prefix = normalized === 'easypaisa' ? 'EP' : 'JC';
+    const fakeId = `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+
+    const tx = await Transaction.create({
+      user_id: proposal.campaignId.brand_id,
+      amount: amountNumber,
+      transaction_type: 'debit',
+      status: succeeded ? 'approved' : 'rejected',
+      campaignId: proposal.campaignId._id,
+      proposalId: proposal._id,
+      method: normalized,
+      transactionId: fakeId,
+      currency: process.env.STRIPE_CURRENCY || 'usd',
+      app_fee: appFee,
+      influencer_amount: influencerAmount,
+      isPayout: false,
+      description: `Brand payment (${normalized}) for proposal ${proposal._id}`,
+    });
+
+    if (succeeded) {
+      proposal.paymentStatus = 'paid';
+      proposal.brandTransactionId = tx._id;
+      await proposal.save();
+    }
+
+    return res.status(200).json({
+      success: succeeded,
+      data: {
+        transactionId: tx.transactionId,
+        status: succeeded ? 'succeeded' : 'failed',
+        method: normalized,
+        amount: amountNumber,
+        createdAt: tx.created_at,
+        proposal: succeeded ? proposal : undefined,
+      },
+      message: succeeded ? 'Payment succeeded (sandbox)' : 'Payment failed (sandbox)',
+    });
+  } catch (err) {
+    console.error('createPakPayment error:', err);
+    return res.status(500).json({ success: false, message: 'Failed to process mock payment' });
   }
 };
 

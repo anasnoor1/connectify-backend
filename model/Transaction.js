@@ -7,6 +7,8 @@ const transactionSchema = new mongoose.Schema({
   status: { type: String, enum: ["pending", "approved", "rejected"], default: "pending" },
   campaignId: { type: mongoose.Schema.Types.ObjectId, ref: "Campaign" },
   proposalId: { type: mongoose.Schema.Types.ObjectId, ref: "Proposal" },
+  method: { type: String, enum: ["stripe", "easypaisa", "jazzcash"], default: "stripe" },
+  transactionId: { type: String },
   stripePaymentIntentId: { type: String },
   stripeChargeId: { type: String },
   currency: { type: String, default: "usd" },

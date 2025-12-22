@@ -226,7 +226,7 @@ exports.getBrandProposals = async (req, res) => {
 exports.updateProposalStatus = async (req, res) => {
   try {
     const { proposalId } = req.params;
-    const { status } = req.body;
+    const { status, paymentMethod } = req.body;
     const brandId = req.user._id;
 
     // Validate status
@@ -257,6 +257,7 @@ exports.updateProposalStatus = async (req, res) => {
     let clientSecret = null;
 
     if (status === "accepted") {
+      const normalizedMethod = (paymentMethod || 'stripe').toLowerCase();
       const maxInfluencers =
         (proposal.campaignId.requirements &&
         typeof proposal.campaignId.requirements.max_influencers === 'number'
@@ -289,7 +290,7 @@ exports.updateProposalStatus = async (req, res) => {
         proposal.deadline = new Date(proposal.acceptedAt.getTime() + deliveryDays * 24 * 60 * 60 * 1000);
       }
 
-      if (!proposal.paymentIntentId) {
+      if (normalizedMethod === 'stripe' && !proposal.paymentIntentId) {
         const amountNumber = typeof proposal.amount === "number" ? proposal.amount : Number(proposal.amount) || 0;
         if (!amountNumber || amountNumber <= 0) {
           return res.status(400).json({ msg: "Invalid proposal amount for payment" });
@@ -337,7 +338,7 @@ exports.updateProposalStatus = async (req, res) => {
         proposal.paymentIntentId = paymentIntent.id;
         proposal.brandTransactionId = tx._id;
         clientSecret = paymentIntent.client_secret;
-      } else {
+      } else if (normalizedMethod === 'stripe' && proposal.paymentIntentId) {
         if (!stripe) {
           return res.status(500).json({ msg: "Stripe is not configured on the server" });
         }
@@ -351,6 +352,9 @@ exports.updateProposalStatus = async (req, res) => {
           console.error("Failed to retrieve existing PaymentIntent:", e);
           return res.status(500).json({ msg: "Failed to retrieve existing payment" });
         }
+      } else {
+        // Non-Stripe flow: accept without creating a PaymentIntent
+        clientSecret = null;
       }
     } else {
       proposal.status = status;
