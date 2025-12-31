@@ -241,6 +241,53 @@ exports.createStripeConnectLink = async (req, res) => {
   }
 };
 
+exports.createStripeLoginLink = async (req, res) => {
+  try {
+    if (!req.user || req.user.role !== 'influencer') {
+      return res.status(403).json({ success: false, message: 'Only influencers can access Stripe dashboard' });
+    }
+
+    if (!stripe) {
+      return res.status(500).json({ success: false, message: 'Stripe is not configured on the server' });
+    }
+
+    const user = await User.findById(req.user._id).select('stripeAccountId');
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    if (!user.stripeAccountId) {
+      return res.status(400).json({ success: false, message: 'Stripe is not connected yet' });
+    }
+
+    const headerOrigin = req.headers.origin;
+    let headerRefererOrigin = null;
+    try {
+      if (req.headers.referer) headerRefererOrigin = new URL(req.headers.referer).origin;
+    } catch (_) {}
+    const frontendOrigin = process.env.CLIENT_APP_URL || headerOrigin || headerRefererOrigin || 'http://localhost:5173';
+    const returnUrl = process.env.STRIPE_CONNECT_RETURN_URL || new URL('/influencer/dashboard?connect=success', frontendOrigin).toString();
+
+    const loginLink = await stripe.accounts.createLoginLink(user.stripeAccountId, {
+      redirect_url: returnUrl,
+    });
+
+    return res.json({
+      success: true,
+      url: loginLink.url,
+    });
+  } catch (err) {
+    console.error('createStripeLoginLink error:', err);
+
+    let message = 'Failed to create Stripe dashboard link';
+    if (err && err.raw && err.raw.type === 'invalid_request_error' && err.raw.message) {
+      message = err.raw.message;
+    }
+
+    return res.status(500).json({ success: false, message });
+  }
+};
+
 exports.disconnectStripe = async (req, res) => {
   try {
     if (!req.user || req.user.role !== 'influencer') {

@@ -232,9 +232,61 @@ exports.getBrandCampaigns = async (req, res) => {
           }
         }
       });
+
+      // Hide "full" campaigns from influencer active listing unless the influencer
+      // is already accepted on that campaign.
+      const requestedStatus = status ? status.toLowerCase() : '';
+      const isActiveView = !requestedStatus || requestedStatus === 'active' || requestedStatus === 'all';
+      if (isActiveView) {
+        campaignsData = campaignsData.filter((c) => {
+          if (c.status !== 'active') return true;
+          if (!c.isFull) return true;
+          return c.proposal_status === 'accepted';
+        });
+      }
     }
 
-    const total = await Campaign.countDocuments(query);
+    // Keep pagination totals accurate for influencer views where we hide full campaigns.
+    let total = await Campaign.countDocuments(query);
+    if (role === 'influencer') {
+      const requestedStatus = status ? status.toLowerCase() : '';
+      const isActiveView = !requestedStatus || requestedStatus === 'active' || requestedStatus === 'all';
+      if (isActiveView) {
+        const allForCount = await Campaign.find(query).select('_id requirements status').lean();
+        const allIds = allForCount.map((c) => c._id);
+        const acceptedCounts = await Proposal.aggregate([
+          { $match: { campaignId: { $in: allIds }, status: 'accepted' } },
+          { $group: { _id: '$campaignId', count: { $sum: 1 } } },
+        ]);
+
+        const countsMap = {};
+        acceptedCounts.forEach((row) => {
+          if (row && row._id) countsMap[row._id.toString()] = row.count || 0;
+        });
+
+        const acceptedByMe = await Proposal.find({
+          campaignId: { $in: allIds },
+          influencerId: userId,
+          status: 'accepted',
+        }).select('campaignId');
+
+        const acceptedSet = new Set(acceptedByMe.map((p) => p.campaignId.toString()));
+
+        const visibleCount = allForCount.filter((c) => {
+          if (c.status !== 'active') return true;
+          const maxInfluencers =
+            (c.requirements && typeof c.requirements.max_influencers === 'number'
+              ? c.requirements.max_influencers
+              : 1) || 1;
+          const acceptedCount = countsMap[c._id.toString()] || 0;
+          const isFull = acceptedCount >= maxInfluencers;
+          if (!isFull) return true;
+          return acceptedSet.has(c._id.toString());
+        }).length;
+
+        total = visibleCount;
+      }
+    }
 
     res.json({
       success: true,
@@ -613,6 +665,9 @@ exports.getSuggestedCampaigns = async (req, res) => {
         c.acceptedCount = acceptedCount;
         c.isFull = acceptedCount >= maxInfluencers;
       });
+
+      // Do not suggest campaigns that are already full.
+      suggestionsData = suggestionsData.filter((c) => !c.isFull);
     }
 
     return res.status(200).json({

@@ -214,7 +214,6 @@ exports.upsertCompleteProfile = async (req, res) => {
   }
 };
 
-// Upload profile picture
 exports.uploadAvatar = async (req, res) => {
   try {
     const { avatar_url } = req.body;
@@ -335,6 +334,12 @@ exports.getPublicInfluencerProfileBySlug = async (req, res) => {
       influencer_id: user._id,
     }).lean();
 
+    const completed_campaigns = await Proposal.countDocuments({
+      influencerId: user._id,
+      status: 'accepted',
+      adminApprovedCompletion: true,
+    });
+
     // Return user data even if profile doesn't exist yet
     return res.json({
       data: {
@@ -343,6 +348,9 @@ exports.getPublicInfluencerProfileBySlug = async (req, res) => {
         role: user.role,
         is_verified: user.is_verified,
         status: user.status,
+        stats: {
+          completed_campaigns,
+        },
         category: profile?.category || null,
         instagram_username: profile?.instagram_username || null,
         followers_count:
@@ -399,9 +407,9 @@ exports.getPublicBrandProfileBySlug = async (req, res) => {
       brandProfile = await BrandProfile.findOne({ brand_id: user._id });
     }
 
-    if (!user) {
-      return res.status(404).json({ message: 'Brand not found' });
-    }
+    const campaigns_created = await Campaign.countDocuments({
+      brand_id: user._id,
+    });
 
     // Return user data even if profile doesn't exist yet
     return res.json({
@@ -411,6 +419,9 @@ exports.getPublicBrandProfileBySlug = async (req, res) => {
         role: user.role,
         is_verified: user.is_verified,
         status: user.status,
+        stats: {
+          campaigns_created,
+        },
         company_name: brandProfile?.company_name || user.name,
         industry: brandProfile?.industry || null,
         website: brandProfile?.website || '',
@@ -419,23 +430,6 @@ exports.getPublicBrandProfileBySlug = async (req, res) => {
         profile_incomplete: !brandProfile,
       },
     });
-
-    const query = { brand_id: req.user._id };
-    const existing = await BrandProfile.findOne(query);
-
-    if (!existing && !body.company_name) {
-      return res.status(400).json({ message: 'company_name is required for first-time brand profile creation' });
-    }
-
-    const update = { $set: { ...body, brand_id: req.user._id } };
-    const updated = await BrandProfile.findOneAndUpdate(query, update, {
-      upsert: true,
-      new: true,
-      setDefaultsOnInsert: true,
-      runValidators: true,
-      context: 'query',
-    });
-    return res.json({ profile: updated });
   } catch (err) {
     return res.status(400).json({ message: 'Unable to save brand profile', error: err?.message });
   }
@@ -460,81 +454,55 @@ exports.getBrandProfile = async (req, res) => {
 exports.getInfluencerProfile = async (req, res) => {
   try {
     const profile = await InfluencerProfile.findOne({ influencer_id: req.user._id });
-    return res.json({ profile });
+    if (profile) {
+      return res.json({ profile });
+    }
+    return res.json({ profile: {} });
   } catch (err) {
     return res.status(500).json({ message: 'Server error', error: err?.message });
   }
 };
 
 exports.upsertInfluencerProfile = async (req, res) => {
-  try {
-    const allowed = ['category', 'instagram_username', 'followers_count', 'engagement_rate', 'bio', 'social_links', 'avatar_url', 'phone'];
-    const body = pick(req.body, allowed);
-
-    if (body.followers_count !== undefined) {
-      body.followers_count = Number(body.followers_count);
-      if (isNaN(body.followers_count)) delete body.followers_count;
-    }
-    if (body.engagement_rate !== undefined) {
-      body.engagement_rate = Number(body.engagement_rate);
-      if (isNaN(body.engagement_rate)) delete body.engagement_rate;
-    }
-    if (body.social_links !== undefined) {
-      if (typeof body.social_links === 'string') {
-        body.social_links = body.social_links
-          .split(',')
-          .map(s => s.trim())
-          .filter(Boolean);
-      }
-      if (!Array.isArray(body.social_links)) delete body.social_links;
-    }
-
-    const query = { influencer_id: req.user._id };
-    const update = { $set: { ...body, influencer_id: req.user._id } };
-    const updated = await InfluencerProfile.findOneAndUpdate(query, update, {
-      upsert: true,
-      new: true,
-      setDefaultsOnInsert: true,
-      runValidators: true,
-      context: 'query',
-    });
-    return res.json({ profile: updated });
-  } catch (err) {
-    return res.status(400).json({ message: 'Unable to save influencer profile', error: err?.message });
-  }
+  return exports.upsertCompleteProfile(req, res);
 };
 
 exports.deleteBrandProfile = async (req, res) => {
   try {
-    await BrandProfile.findOneAndDelete({ brand_id: req.user._id });
-    return res.json({ message: 'Brand profile deleted' });
+    await BrandProfile.deleteOne({ brand_id: req.user._id });
+    return res.json({ message: 'Brand profile deleted successfully' });
   } catch (err) {
-    return res.status(500).json({ message: 'Unable to delete brand profile', error: err?.message });
+    return res.status(500).json({ message: 'Failed to delete brand profile', error: err?.message });
   }
 };
 
 exports.deleteInfluencerProfile = async (req, res) => {
   try {
-    await InfluencerProfile.findOneAndDelete({ influencer_id: req.user._id });
-    return res.json({ message: 'Influencer profile deleted' });
+    await InfluencerProfile.deleteOne({ influencer_id: req.user._id });
+    return res.json({ message: 'Influencer profile deleted successfully' });
   } catch (err) {
-    return res.status(500).json({ message: 'Unable to delete influencer profile', error: err?.message });
+    return res.status(500).json({ message: 'Failed to delete influencer profile', error: err?.message });
   }
 };
 
 exports.deleteMyProfile = async (req, res) => {
   try {
-    if (req.user.role === 'brand') {
-      await BrandProfile.findOneAndDelete({ brand_id: req.user._id });
-      return res.json({ message: 'Profile deleted', role: 'brand' });
+    const user = await User.findById(req.user._id).select('role');
+    if (!user) return res.status(404).json({ message: 'User not found' });
+
+    if (user.role === 'brand') {
+      await BrandProfile.deleteOne({ brand_id: req.user._id });
+      return res.json({ message: 'Brand profile deleted successfully' });
     }
-    if (req.user.role === 'influencer') {
-      await InfluencerProfile.findOneAndDelete({ influencer_id: req.user._id });
-      return res.json({ message: 'Profile deleted', role: 'influencer' });
+
+    if (user.role === 'influencer') {
+      await InfluencerProfile.deleteOne({ influencer_id: req.user._id });
+      return res.json({ message: 'Influencer profile deleted successfully' });
     }
-    return res.status(400).json({ message: 'Unsupported role for profile' });
+
+    return res.status(400).json({ message: 'Unsupported role for profile deletion' });
   } catch (err) {
-    return res.status(500).json({ message: 'Unable to delete profile', error: err?.message });
+    return res.status(500).json({ message: 'Failed to delete profile', error: err?.message });
   }
 };
 
@@ -551,6 +519,12 @@ exports.getPublicInfluencerProfileById = async (req, res) => {
 
     const profile = await InfluencerProfile.findOne({ influencer_id: user._id }).lean();
 
+    const completed_campaigns = await Proposal.countDocuments({
+      influencerId: user._id,
+      status: 'accepted',
+      adminApprovedCompletion: true,
+    });
+
     // Return user data even if profile doesn't exist yet
     return res.json({
       data: {
@@ -559,6 +533,9 @@ exports.getPublicInfluencerProfileById = async (req, res) => {
         role: user.role,
         is_verified: user.is_verified,
         status: user.status,
+        stats: {
+          completed_campaigns,
+        },
         category: profile?.category || null,
         instagram_username: profile?.instagram_username || null,
         followers_count:
@@ -595,10 +572,22 @@ exports.getPublicBrandProfileById = async (req, res) => {
 
     const profile = await BrandProfile.findOne({ brand_id: user._id }).lean();
 
+    const campaigns_created = await Campaign.countDocuments({
+      brand_id: user._id,
+    });
+
     // Return user data even if profile doesn't exist yet
     // This allows viewing basic brand info before they complete their profile
     return res.json({
       data: {
+        id: user._id,
+        name: user.name,
+        role: user.role,
+        is_verified: user.is_verified,
+        status: user.status,
+        stats: {
+          campaigns_created,
+        },
         company_name: profile?.company_name || user.name,
         industry: profile?.industry || null,
         website: profile?.website || '',
@@ -612,7 +601,7 @@ exports.getPublicBrandProfileById = async (req, res) => {
   }
 };
 
-// Public collaborations for an influencer (based on accepted proposals)
+// ... (rest of the code remains the same)
 exports.getPublicInfluencerCollaborations = async (req, res) => {
   try {
     const { id } = req.params;
