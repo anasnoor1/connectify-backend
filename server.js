@@ -58,7 +58,14 @@ console.log('CORS: allowing origins', FRONTEND_ORIGINS);
 app.use(cors({
   origin: (origin, cb) => {
     if (!origin) return cb(null, true);
-    return FRONTEND_ORIGINS.includes(origin)
+
+    const normalized = String(origin).replace(/\/$/, '');
+    const isDev = process.env.NODE_ENV !== 'production';
+    const isLocalDevOrigin = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(normalized);
+
+    if (isDev && isLocalDevOrigin) return cb(null, true);
+
+    return FRONTEND_ORIGINS.includes(normalized)
       ? cb(null, true)
       : cb(new Error('Not allowed by CORS'));
   },
