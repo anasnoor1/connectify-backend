@@ -90,6 +90,7 @@ app.use('/api/disputes', disputeRoutes);
 
 app.use("/api/chat", require("./routes/chatRoutes.js"));
 app.use("/api/message", require("./routes/messageRoute.js"));
+app.use("/api/chat/upload", require("./routes/chatUpload.js"));
 
 start();
 
